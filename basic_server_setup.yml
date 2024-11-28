@@ -1,0 +1,86 @@
+---
+- name: Basic server setup
+  hosts: all
+  become: yes
+  vars:
+    ssh_port: 22
+    username: andreas
+    pubkey_url: "https://www.ameistad.com/pub_key.txt"
+    dotfiles_repo: "https://github.com/ameistad/dotfiles"
+
+  tasks:
+    # 1. Install required packages
+    - name: Ensure required packages are installed
+      apt:
+        name:
+          - openssh-server
+          - zsh
+          - git
+        state: present
+
+    # 2. Configure SSH with sane defaults and disable password authentication
+    - name: Update SSH configuration
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+        state: present
+      loop:
+        - { regexp: "^#?PermitRootLogin", line: "PermitRootLogin no" }
+        - { regexp: "^#?PasswordAuthentication", line: "PasswordAuthentication no" }
+        - { regexp: "^#?ChallengeResponseAuthentication", line: "ChallengeResponseAuthentication no" }
+        - { regexp: "^#?UseDNS", line: "UseDNS no" }
+    - name: Restart SSH service
+      systemd:
+        name: ssh
+        state: restarted
+
+    # 3. Create the user andreas with sudo privileges and Zsh as the default shell
+    - name: Create the andreas user
+      user:
+        name: "{{ username }}"
+        shell: /usr/bin/zsh
+        home: "/home/{{ username }}"
+        create_home: yes
+        groups: sudo
+
+    # 4. Add the public key to the authorized_keys file
+    - name: Fetch and add public key to authorized_keys
+      get_url:
+        url: "{{ pubkey_url }}"
+        dest: "/home/{{ username }}/.ssh/authorized_keys"
+        owner: "{{ username }}"
+        group: "{{ username }}"
+        mode: '0600'
+
+    # 5. Clone the dotfiles repository
+    - name: Clone dotfiles repository
+      git:
+        repo: "{{ dotfiles_repo }}"
+        dest: "/home/{{ username }}/dotfiles"
+        clone: yes
+        update: yes
+        force: yes
+        version: HEAD
+        owner: "{{ username }}"
+        group: "{{ username }}"
+
+    # 6. Create ~/.localrc and set environment variables
+    - name: Create .localrc file
+      copy:
+        dest: "/home/{{ username }}/.localrc"
+        content: |
+          export ZSH=$HOME/dotfiles
+          export PROJECTS_DIRECTORY=~/
+        owner: "{{ username }}"
+        group: "{{ username }}"
+        mode: '0644'
+
+    # 7. Create a symlink for .zshrc
+    - name: Create symlink for .zshrc
+      file:
+        src: "/home/{{ username }}/dotfiles/.zshrc"
+        dest: "/home/{{ username }}/.zshrc"
+        state: link
+        owner: "{{ username }}"
+        group: "{{ username }}"
