@@ -19,11 +19,10 @@ echo "Installing essential packages..."
 apt install -y sudo vim curl python3 python3-pip git software-properties-common
 
 echo "Installing Ansible..."
-apt-add-repository --yes --update ppa:ansible/ansible
 apt install -y ansible
 
 echo "Setting up the first user..."
-adduser "$USERNAME"  # Add the user
+adduser "$USERNAME" || echo "User $USERNAME already exists."  # Add the user if it doesn't exist
 usermod -aG sudo "$USERNAME"  # Add the user to the sudo group
 
 echo "Setup complete. Please log out and log back in as $USERNAME to apply changes."
