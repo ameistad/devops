@@ -62,19 +62,14 @@
         update: yes
         force: yes
         version: HEAD
-        owner: "{{ username }}"
-        group: "{{ username }}"
 
-    # 6. Create ~/.localrc and set environment variables
-    - name: Create .localrc file
-      copy:
-        dest: "/home/{{ username }}/.localrc"
-        content: |
-          export ZSH=$HOME/dotfiles
-          export PROJECTS_DIRECTORY=~/
+    # 6. Set ownership of the dotfiles directory
+    - name: Set ownership for dotfiles directory
+      file:
+        path: "/home/{{ username }}/dotfiles"
         owner: "{{ username }}"
         group: "{{ username }}"
-        mode: '0644'
+        recurse: yes
 
     # 7. Create a symlink for .zshrc
     - name: Create symlink for .zshrc
