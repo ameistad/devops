@@ -89,3 +89,28 @@
         owner: "{{ username }}"
         group: "{{ username }}"
         mode: '0644'
+    # 9. Update the APT sources.list file to include contrib and non-free
+    - name: Ensure contrib and non-free are added to sources.list
+      lineinfile:
+        path: /etc/apt/sources.list
+        line: "deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware"
+        state: present
+        regexp: "^deb .* main"
+
+    - name: Ensure contrib and non-free for updates are added
+      lineinfile:
+        path: /etc/apt/sources.list
+        line: "deb http://deb.debian.org/debian bookworm-updates main contrib non-free non-free-firmware"
+        state: present
+        regexp: "^deb .* bookworm-updates"
+
+    - name: Ensure contrib and non-free for security are added
+      lineinfile:
+        path: /etc/apt/sources.list
+        line: "deb http://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware"
+        state: present
+        regexp: "^deb .* security"
+
+    - name: Update APT cache
+      apt:
+        update_cache: yes

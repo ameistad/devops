@@ -7,3 +7,9 @@ wget https://raw.githubusercontent.com/ameistad/devops/refs/heads/main/initial_s
 chmod +x initial_setup.sh
 ./initial_setup.sh
 ```
+
+
+## Run playbooks
+```sh
+ansible-playbook -i hosts playbook.yml
+```
