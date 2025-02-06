@@ -20,7 +20,7 @@ echo "Updating system packages..."
 apt update && apt upgrade -y
 
 echo "Installing essential packages..."
-apt install -y sudo vim curl python3 python3-pip git software-properties-common
+apt install -y sudo vim curl python3 python3-pip git software-properties-common sshpass
 
 echo "Installing Ansible..."
 apt install -y ansible

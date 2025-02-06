@@ -17,9 +17,36 @@
           - zsh
           - git
         state: present
+        update_cache: yes
 
-    # 2. Configure SSH with sane defaults and disable password authentication
-    - name: Update SSH configuration
+    # 2. Create the andreas user with sudo privileges and Zsh as the default shell
+    - name: Create the andreas user
+      user:
+        name: "{{ username }}"
+        shell: /usr/bin/zsh
+        home: "/home/{{ username }}"
+        create_home: yes
+        groups: sudo
+
+    # 3. Ensure .ssh directory exists for the user
+    - name: Ensure .ssh directory exists
+      file:
+        path: "/home/{{ username }}/.ssh"
+        state: directory
+        owner: "{{ username }}"
+        group: "{{ username }}"
+        mode: '0700'
+
+    # 4. Add the public key to authorized_keys
+    - name: Add public key to authorized_keys
+      authorized_key:
+        user: "{{ username }}"
+        state: present
+        key: "{{ lookup('url', pubkey_url) }}"
+
+    # 5. Configure SSH with sane defaults and disable password authentication
+    # (Do this after ensuring key access is set up)
+    - name: Update SSH configuration: Disable root login and password-based auth
       lineinfile:
         path: /etc/ssh/sshd_config
         regexp: "{{ item.regexp }}"
@@ -30,30 +57,13 @@
         - { regexp: "^#?PasswordAuthentication", line: "PasswordAuthentication no" }
         - { regexp: "^#?ChallengeResponseAuthentication", line: "ChallengeResponseAuthentication no" }
         - { regexp: "^#?UseDNS", line: "UseDNS no" }
+
     - name: Restart SSH service
       systemd:
         name: ssh
         state: restarted
 
-    # 3. Create the user andreas with sudo privileges and Zsh as the default shell
-    - name: Create the andreas user
-      user:
-        name: "{{ username }}"
-        shell: /usr/bin/zsh
-        home: "/home/{{ username }}"
-        create_home: yes
-        groups: sudo
-
-    # 4. Add the public key to the authorized_keys file
-    - name: Fetch and add public key to authorized_keys
-      get_url:
-        url: "{{ pubkey_url }}"
-        dest: "/home/{{ username }}/.ssh/authorized_keys"
-        owner: "{{ username }}"
-        group: "{{ username }}"
-        mode: '0600'
-
-    # 5. Clone the dotfiles repository
+    # 6. Clone the dotfiles repository
     - name: Clone dotfiles repository
       git:
         repo: "{{ dotfiles_repo }}"
@@ -62,8 +72,10 @@
         update: yes
         force: yes
         version: HEAD
+      become: false
+      # Use become: false so git uses the user’s credentials and writes to their home
 
-    # 6. Set ownership of the dotfiles directory
+    # 7. Set ownership of the dotfiles directory
     - name: Set ownership for dotfiles directory
       file:
         path: "/home/{{ username }}/dotfiles"
@@ -71,7 +83,7 @@
         group: "{{ username }}"
         recurse: yes
 
-    # 7. Create a symlink for .zshrc
+    # 8. Create a symlink for .zshrc from dotfiles
     - name: Create symlink for .zshrc
       file:
         src: "/home/{{ username }}/dotfiles/.zshrc"
@@ -79,7 +91,8 @@
         state: link
         owner: "{{ username }}"
         group: "{{ username }}"
-    # 8. Create the .localrc file with custom content
+
+    # 9. Create the .localrc file with custom environment variables
     - name: Create .localrc file with custom environment variables
       copy:
         dest: "/home/{{ username }}/.localrc"
@@ -89,8 +102,9 @@
         owner: "{{ username }}"
         group: "{{ username }}"
         mode: '0644'
-    # 9. Update the APT sources.list file to include contrib and non-free
-    - name: Ensure contrib and non-free are added to sources.list
+
+    # 10. Update the APT sources.list file to include contrib and non-free repositories
+    - name: Ensure contrib and non-free are added to main sources.list
       lineinfile:
         path: /etc/apt/sources.list
         line: "deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware"
