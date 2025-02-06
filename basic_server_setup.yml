@@ -46,7 +46,7 @@
 
     # 5. Configure SSH with sane defaults and disable password authentication
     # (Do this after ensuring key access is set up)
-    - name: Update SSH configuration: Disable root login and password-based auth
+    - name: "Update SSH configuration - Disable root login and password-based auth"
       lineinfile:
         path: /etc/ssh/sshd_config
         regexp: "{{ item.regexp }}"
@@ -73,7 +73,6 @@
         force: yes
         version: HEAD
       become: false
-      # Use become: false so git uses the user’s credentials and writes to their home
 
     # 7. Set ownership of the dotfiles directory
     - name: Set ownership for dotfiles directory
