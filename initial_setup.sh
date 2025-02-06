@@ -11,6 +11,10 @@ fi
 
 # Prompt for the username
 read -p "Enter the username to create/update for first user: " USERNAME
+if [ -z "$USERNAME" ]; then
+  echo "Username cannot be empty."
+  exit 1
+fi
 
 echo "Updating system packages..."
 apt update && apt upgrade -y
