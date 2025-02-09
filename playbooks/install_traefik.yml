@@ -1,0 +1,78 @@
+---
+- name: Install Traefik on Debian 12
+  hosts: all
+  become: yes
+
+  vars:
+    traefik_version: "3.3.3"
+    traefik_download_url: "https://github.com/traefik/traefik/releases/download/v{{ traefik_version }}/traefik_v{{ traefik_version }}_linux_amd64.tar.gz"
+
+  tasks:
+    - name: Create temporary directory for Traefik download
+      tempfile:
+        state: directory
+        suffix: traefik
+      register: traefik_tempdir
+
+    - name: Download Traefik tarball
+      get_url:
+        url: "{{ traefik_download_url }}"
+        dest: "{{ traefik_tempdir.path }}/traefik.tar.gz"
+        mode: '0644'
+
+    - name: Create directory for Traefik extraction
+      file:
+        path: "{{ traefik_tempdir.path }}/traefik_extracted"
+        state: directory
+
+    - name: Extract Traefik tarball to temporary directory
+      unarchive:
+        src: "{{ traefik_tempdir.path }}/traefik.tar.gz"
+        dest: "{{ traefik_tempdir.path }}/traefik_extracted"
+        remote_src: yes
+        creates: "{{ traefik_tempdir.path }}/traefik_extracted/traefik"
+
+    - name: Copy Traefik binary to /usr/local/bin
+      copy:
+        src: "{{ traefik_tempdir.path }}/traefik_extracted/traefik"
+        dest: /usr/local/bin/traefik
+        mode: '0755'
+        owner: root
+        group: root
+        remote_src: yes
+
+    - name: Create Traefik config directory
+      file:
+        path: /etc/traefik
+        state: directory
+        mode: '0755'
+        owner: root
+        group: root
+
+    - name: Deploy Traefik systemd service file
+      copy:
+        dest: /etc/systemd/system/traefik.service
+        content: |
+          [Unit]
+          Description=Traefik Service
+          After=network.target
+
+          [Service]
+          ExecStart=/usr/local/bin/traefik --configFile=/etc/traefik/traefik.yml
+          Restart=always
+          User=root
+          Group=root
+
+          [Install]
+          WantedBy=multi-user.target
+        mode: '0644'
+
+    - name: Reload systemd daemon
+      systemd:
+        daemon_reload: yes
+
+    - name: Enable and start Traefik service
+      systemd:
+        name: traefik
+        state: started
+        enabled: yes

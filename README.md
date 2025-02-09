@@ -1,5 +1,8 @@
 # Various ansible playbooks for different tasks
 
+## Prerequisites
+- Server installed with Debian 12.
+- Ansible and sshpass installed on your local machine
 
 ## Initial setup
 ```sh
