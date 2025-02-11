@@ -18,7 +18,6 @@ chmod +x initial_setup.sh
 ansible-playbook <playbook>.yml --limit <server-name> --ask-pass --ask-become-pass
 ```
 
-
 ## Ghostty support
 ```bash
 infocmp -x | ssh YOUR-SERVER -- tic -x -
