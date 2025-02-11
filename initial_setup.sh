@@ -28,16 +28,19 @@ else
 fi
 usermod -aG sudo "$USERNAME"
 
+# Switch default shell to zsh for the user
+usermod -s "$(which zsh)" "$USERNAME"
+
 # Create .ssh directory with correct permissions
 SSH_DIR="/home/$USERNAME/.ssh"
 mkdir -p "$SSH_DIR"
 chown "$USERNAME:$USERNAME" "$SSH_DIR"
 chmod 700 "$SSH_DIR"
 
-# Fetch the public key and store it as id_ed25519.pub
-curl -fsSL https://ameistad.com/pub_key.txt -o "$SSH_DIR/id_ed25519.pub"
-chown "$USERNAME:$USERNAME" "$SSH_DIR/id_ed25519.pub"
-chmod 600 "$SSH_DIR/id_ed25519.pub"
+# Fetch the public key and store it as authorized_keys
+curl -fsSL https://ameistad.com/pub_key.txt -o "$SSH_DIR/authorized_keys"
+chown "$USERNAME:$USERNAME" "$SSH_DIR/authorized_keys"
+chmod 600 "$SSH_DIR/authorized_keys"
 
 # Clone the dotfiles repository and set ownership
 DOTFILES_DIR="/home/$USERNAME/dotfiles"
