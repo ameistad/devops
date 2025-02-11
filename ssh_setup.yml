@@ -1,0 +1,47 @@
+---
+- name: SSH configuration
+  hosts: all
+  become: yes
+  tasks:    # Configure SSH with sane defaults and disable password authentication
+    - name: Update SSH configuration - Disable root login and password-based auth
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+        state: present
+      loop:
+        - { regexp: "^#?PermitRootLogin", line: "PermitRootLogin no" }
+        - { regexp: "^#?PasswordAuthentication", line: "PasswordAuthentication no" }
+        - { regexp: "^#?ChallengeResponseAuthentication", line: "ChallengeResponseAuthentication no" }
+        - { regexp: "^#?UseDNS", line: "UseDNS no" }
+
+    - name: Restart SSH service
+      systemd:
+        name: ssh
+        state: restarted
+
+    # Update the APT sources.list file to include contrib and non-free repositories
+    - name: Ensure contrib and non-free are added to main sources.list
+      lineinfile:
+        path: /etc/apt/sources.list
+        line: "deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware"
+        state: present
+        regexp: "^deb .* main"
+
+    - name: Ensure contrib and non-free for updates are added
+      lineinfile:
+        path: /etc/apt/sources.list
+        line: "deb http://deb.debian.org/debian bookworm-updates main contrib non-free non-free-firmware"
+        state: present
+        regexp: "^deb .* bookworm-updates"
+
+    - name: Ensure contrib and non-free for security are added
+      lineinfile:
+        path: /etc/apt/sources.list
+        line: "deb http://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware"
+        state: present
+        regexp: "^deb .* security"
+
+    - name: Update APT cache
+      apt:
+        update_cache: yes
