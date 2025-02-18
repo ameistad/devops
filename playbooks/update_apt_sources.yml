@@ -1,26 +1,8 @@
 ---
-- name: SSH configuration
+- name: Update APT sources for Debian repositories
   hosts: all
   become: yes
-  tasks:    # Configure SSH with sane defaults and disable password authentication
-    - name: Update SSH configuration - Disable root login and password-based auth
-      lineinfile:
-        path: /etc/ssh/sshd_config
-        regexp: "{{ item.regexp }}"
-        line: "{{ item.line }}"
-        state: present
-      loop:
-        - { regexp: "^#?PermitRootLogin", line: "PermitRootLogin no" }
-        - { regexp: "^#?PasswordAuthentication", line: "PasswordAuthentication no" }
-        - { regexp: "^#?ChallengeResponseAuthentication", line: "ChallengeResponseAuthentication no" }
-        - { regexp: "^#?UseDNS", line: "UseDNS no" }
-
-    - name: Restart SSH service
-      systemd:
-        name: ssh
-        state: restarted
-
-    # Update the APT sources.list file to include contrib and non-free repositories
+  tasks:
     - name: Ensure contrib and non-free are added to main sources.list
       lineinfile:
         path: /etc/apt/sources.list
