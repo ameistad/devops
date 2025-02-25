@@ -6,9 +6,7 @@
 
 ## Initial setup
 ```sh
-sudo apt update && sudo apt install curl
-
-
+apt update && apt install curl
 curl -o initial_setup.sh https://raw.githubusercontent.com/ameistad/devops/refs/heads/main/initial_setup.sh
 chmod +x initial_setup.sh
 ./initial_setup.sh
