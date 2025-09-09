@@ -50,7 +50,7 @@ echo "Updating system packages..."
 apt update && apt upgrade -y
 
 echo "Installing essential packages..."
-apt install -y sudo vim curl python3 python3-pip git software-properties-common zsh openssh-server ansible
+apt install -y sudo neovim curl python3 python3-pip git software-properties-common zsh openssh-server ansible
 
 echo "Setting up the user..."
 if id "$USERNAME" &>/dev/null; then
