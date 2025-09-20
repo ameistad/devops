@@ -36,7 +36,6 @@ fi
 # Set variables
 INSTALL_DIR="/usr/local"
 TEMP_DIR=$(mktemp -d)
-NVIM_URL="https://github.com/neovim/neovim/releases/latest/download/nvim-linux64.tar.gz"
 
 # Cleanup function
 cleanup() {
@@ -49,23 +48,71 @@ trap cleanup EXIT
 
 print_status "Starting Neovim installation..."
 
-# Check if curl is installed
+# Check if curl and jq are installed
 if ! command -v curl &> /dev/null; then
     print_error "curl is required but not installed. Installing curl..."
     apt update && apt install -y curl
 fi
 
-# Download latest Neovim
-print_status "Downloading latest Neovim..."
+if ! command -v jq &> /dev/null; then
+    print_status "jq is required but not installed. Installing jq..."
+    apt update && apt install -y jq
+fi
+
+# Get the latest release info from GitHub API
+print_status "Fetching latest release information..."
 cd "$TEMP_DIR"
-if ! curl -LO "$NVIM_URL"; then
+
+API_RESPONSE=$(curl -s "https://api.github.com/repos/neovim/neovim/releases/latest")
+if [[ $? -ne 0 ]]; then
+    print_error "Failed to fetch release information from GitHub API"
+    exit 1
+fi
+
+# Extract download URL for linux64 tarball
+DOWNLOAD_URL=$(echo "$API_RESPONSE" | jq -r '.assets[] | select(.name | test("nvim-linux64\\.tar\\.gz$")) | .browser_download_url')
+
+if [[ -z "$DOWNLOAD_URL" || "$DOWNLOAD_URL" == "null" ]]; then
+    print_error "Could not find download URL for nvim-linux64.tar.gz"
+    print_error "Available assets:"
+    echo "$API_RESPONSE" | jq -r '.assets[].name'
+    exit 1
+fi
+
+VERSION=$(echo "$API_RESPONSE" | jq -r '.tag_name')
+print_status "Found Neovim version: $VERSION"
+print_status "Download URL: $DOWNLOAD_URL"
+
+# Download latest Neovim
+print_status "Downloading Neovim $VERSION..."
+FILENAME=$(basename "$DOWNLOAD_URL")
+
+if ! curl -L -o "$FILENAME" "$DOWNLOAD_URL"; then
     print_error "Failed to download Neovim"
+    exit 1
+fi
+
+# Verify the download
+if [[ ! -f "$FILENAME" ]]; then
+    print_error "Downloaded file not found"
+    exit 1
+fi
+
+# Check if it's a valid gzip file
+if ! file "$FILENAME" | grep -q "gzip compressed"; then
+    print_error "Downloaded file is not a valid gzip archive"
+    print_error "File type: $(file "$FILENAME")"
+    print_error "File contents (first 100 bytes):"
+    head -c 100 "$FILENAME"
     exit 1
 fi
 
 # Extract the archive
 print_status "Extracting Neovim..."
-tar xzf nvim-linux64.tar.gz
+if ! tar xzf "$FILENAME"; then
+    print_error "Failed to extract archive"
+    exit 1
+fi
 
 # Remove existing installation if it exists
 if [[ -d "$INSTALL_DIR/nvim-linux64" ]]; then
@@ -106,4 +153,3 @@ else
 fi
 
 print_status "Installation complete! All users can now use 'nvim' command."
-print_status "You may need to restart your shell or run 'hash -r' to refresh the command cache."
