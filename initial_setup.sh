@@ -93,7 +93,6 @@ chown -h "$USERNAME:$USERNAME" "$ZSHRC"
 # Create .localrc with custom environment variables
 LOCALRC="/home/$USERNAME/.localrc"
 cat > "$LOCALRC" << 'EOF'
-export ZSH=$HOME/dotfiles
 export PROJECTS_DIRECTORY=$HOME
 EOF
 chown "$USERNAME:$USERNAME" "$LOCALRC"
