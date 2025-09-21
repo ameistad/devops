@@ -57,12 +57,11 @@ fi
 
 echo "Hostname changed from '$CURRENT_HOSTNAME' to '$NEW_HOSTNAME'."
 
-# ...existing code continues unchanged...
 echo "Updating system packages..."
 pacman -Syu --noconfirm
 
 echo "Installing essential packages..."
-pacman -S --noconfirm sudo neovim curl python python-pip git zsh openssh
+pacman -S --noconfirm sudo neovim curl python python-pip git zsh openssh which
 
 echo "Enabling SSH service..."
 systemctl enable sshd
@@ -85,8 +84,22 @@ if ! grep -q "^%wheel ALL=(ALL:ALL) ALL" /etc/sudoers; then
   echo "%wheel ALL=(ALL:ALL) ALL" >> /etc/sudoers
 fi
 
+# Find zsh path - try common locations
+ZSH_PATH=""
+for path in /bin/zsh /usr/bin/zsh /usr/local/bin/zsh; do
+  if [ -x "$path" ]; then
+    ZSH_PATH="$path"
+    break
+  fi
+done
+
+if [ -z "$ZSH_PATH" ]; then
+  echo "Error: zsh not found in standard locations"
+  exit 1
+fi
+
 # Switch default shell to zsh for the user
-usermod -s "$(which zsh)" "$USERNAME"
+usermod -s "$ZSH_PATH" "$USERNAME"
 
 # Create .ssh directory with correct permissions
 SSH_DIR="/home/$USERNAME/.ssh"
