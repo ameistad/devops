@@ -1,5 +1,6 @@
 #!/bin/bash
-# curl -fsSL https://sh.ameistad.com/archlinux/set -e
+# curl -fsSL https://sh.ameistad.com/archlinux/initial_setup.sh | bash
+set -e
 
 # Must run as root
 if [ "$EUID" -ne 0 ]; then
@@ -37,7 +38,8 @@ if [ -z "$NEW_HOSTNAME" ]; then
   exit 1
 fi
 
-CURRENT_HOSTNAME=$(hostname)
+# Get current hostname from /etc/hostname or use hostnamectl
+CURRENT_HOSTNAME=$(cat /etc/hostname 2>/dev/null || hostnamectl --static 2>/dev/null || echo "unknown")
 
 # Change hostname using hostnamectl
 hostnamectl set-hostname "$NEW_HOSTNAME"
@@ -46,14 +48,16 @@ hostnamectl set-hostname "$NEW_HOSTNAME"
 echo "$NEW_HOSTNAME" > /etc/hostname
 
 # Update /etc/hosts: replace current hostname with new hostname
-if grep -q "$CURRENT_HOSTNAME " /etc/hosts; then
+if [ "$CURRENT_HOSTNAME" != "unknown" ] && grep -q "$CURRENT_HOSTNAME " /etc/hosts; then
   sed -i "s/\b$CURRENT_HOSTNAME\b/$NEW_HOSTNAME/g" /etc/hosts
 else
-  echo "Warning: $CURRENT_HOSTNAME not found in /etc/hosts."
+  echo "Warning: Could not find current hostname in /etc/hosts, adding new entry."
+  echo "127.0.1.1 $NEW_HOSTNAME" >> /etc/hosts
 fi
 
 echo "Hostname changed from '$CURRENT_HOSTNAME' to '$NEW_HOSTNAME'."
 
+# ...existing code continues unchanged...
 echo "Updating system packages..."
 pacman -Syu --noconfirm
 
@@ -119,4 +123,5 @@ EOF
 chown "$USERNAME:$USERNAME" "$LOCALRC"
 chmod 644 "$LOCALRC"
 
-echo "Setup complete. Please reboot."i
+echo "Setup complete. Please reboot."
+
