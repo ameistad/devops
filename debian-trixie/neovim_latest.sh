@@ -69,11 +69,11 @@ if [[ $? -ne 0 ]]; then
     exit 1
 fi
 
-# Extract download URL for linux64 tarball
-DOWNLOAD_URL=$(echo "$API_RESPONSE" | jq -r '.assets[] | select(.name | test("nvim-linux64\\.tar\\.gz$")) | .browser_download_url')
+# Extract download URL for linux x86_64 tarball
+DOWNLOAD_URL=$(echo "$API_RESPONSE" | jq -r '.assets[] | select(.name | test("nvim-linux-x86_64\\.tar\\.gz$")) | .browser_download_url')
 
 if [[ -z "$DOWNLOAD_URL" || "$DOWNLOAD_URL" == "null" ]]; then
-    print_error "Could not find download URL for nvim-linux64.tar.gz"
+    print_error "Could not find download URL for nvim-linux-x86_64.tar.gz"
     print_error "Available assets:"
     echo "$API_RESPONSE" | jq -r '.assets[].name'
     exit 1
@@ -114,25 +114,34 @@ if ! tar xzf "$FILENAME"; then
     exit 1
 fi
 
+# The extracted directory will be nvim-linux-x86_64, not nvim-linux64
+EXTRACTED_DIR="nvim-linux-x86_64"
+
 # Remove existing installation if it exists
-if [[ -d "$INSTALL_DIR/nvim-linux64" ]]; then
+if [[ -d "$INSTALL_DIR/$EXTRACTED_DIR" ]]; then
     print_warning "Removing existing Neovim installation..."
+    rm -rf "$INSTALL_DIR/$EXTRACTED_DIR"
+fi
+
+# Also remove old nvim-linux64 directory if it exists
+if [[ -d "$INSTALL_DIR/nvim-linux64" ]]; then
+    print_warning "Removing old Neovim installation (nvim-linux64)..."
     rm -rf "$INSTALL_DIR/nvim-linux64"
 fi
 
 # Move to installation directory
 print_status "Installing Neovim to $INSTALL_DIR..."
-mv nvim-linux64 "$INSTALL_DIR/"
+mv "$EXTRACTED_DIR" "$INSTALL_DIR/"
 
 # Create symlink for nvim binary
 print_status "Creating symlink in /usr/local/bin..."
-ln -sf "$INSTALL_DIR/nvim-linux64/bin/nvim" /usr/local/bin/nvim
+ln -sf "$INSTALL_DIR/$EXTRACTED_DIR/bin/nvim" /usr/local/bin/nvim
 
 # Create symlink for man pages
-if [[ -d "$INSTALL_DIR/nvim-linux64/share/man" ]]; then
+if [[ -d "$INSTALL_DIR/$EXTRACTED_DIR/share/man" ]]; then
     print_status "Setting up man pages..."
     mkdir -p /usr/local/share/man/man1
-    ln -sf "$INSTALL_DIR/nvim-linux64/share/man/man1/nvim.1" /usr/local/share/man/man1/nvim.1
+    ln -sf "$INSTALL_DIR/$EXTRACTED_DIR/share/man/man1/nvim.1" /usr/local/share/man/man1/nvim.1
 fi
 
 # Update man database
@@ -153,3 +162,4 @@ else
 fi
 
 print_status "Installation complete! All users can now use 'nvim' command."
+print_status "You may need to restart your shell or run 'hash -r' to refresh the command cache."
