@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+# curl -fsSL https://sh.ameistad.com/archlinux/set -e
 
 # Must run as root
 if [ "$EUID" -ne 0 ]; then
@@ -15,14 +15,23 @@ echo "3. Create or update a user with sudo privileges"
 echo "4. Set up the user's SSH key"
 echo "5. Install dotfiles and set up zsh"
 
-# Prompt for username
-read -p "Enter the username to create/update for first user: " USERNAME
+# Accept command line arguments or prompt
+USERNAME="${1:-}"
+NEW_HOSTNAME="${2:-}"
+
+if [ -z "$USERNAME" ]; then
+  read -p "Enter the username to create/update for first user: " USERNAME
+fi
+
 if [ -z "$USERNAME" ]; then
   echo "Username cannot be empty."
   exit 1
 fi
 
-read -p "Enter hostname: " NEW_HOSTNAME
+if [ -z "$NEW_HOSTNAME" ]; then
+  read -p "Enter hostname: " NEW_HOSTNAME
+fi
+
 if [ -z "$NEW_HOSTNAME" ]; then
   echo "Hostname cannot be empty."
   exit 1
@@ -110,5 +119,4 @@ EOF
 chown "$USERNAME:$USERNAME" "$LOCALRC"
 chmod 644 "$LOCALRC"
 
-echo "Setup complete. Please reboot."
-
+echo "Setup complete. Please reboot."i
