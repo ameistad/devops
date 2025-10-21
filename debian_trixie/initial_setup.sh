@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+
+# Run
+# curl -fsSL https://sh.ameistad.com/debian_trixie/initial_setup.sh | sudo bash
+
 set -e
 
 # Must run as root
