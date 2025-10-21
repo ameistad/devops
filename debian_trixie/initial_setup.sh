@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
 
-# Run
-# curl -fsSL https://sh.ameistad.com/debian_trixie/initial_setup.sh | sudo bash
+# Run as root
+# curl -fsSL https://sh.ameistad.com/debian_trixie/initial_setup.sh | bash
 
 set -e
 
@@ -21,14 +21,13 @@ echo "3. Create or update a user with sudo privileges"
 echo "4. Set up the user's SSH key"
 echo "5. Install dotfiles and set up zsh"
 
-# Prompt for username
-read -p "Enter the username to create/update for first user: " USERNAME
+read -p "Enter the username to create/update for first user: " USERNAME </dev/tty
 if [ -z "$USERNAME" ]; then
   echo "Username cannot be empty."
   exit 1
 fi
 
-read -p "Enter hostname: " NEW_HOSTNAME
+read -p "Enter hostname: " NEW_HOSTNAME </dev/tty
 if [ -z "$NEW_HOSTNAME" ]; then
   echo "Hostname cannot be empty."
   exit 1
