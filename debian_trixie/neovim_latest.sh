@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+# Run with sudo
+# curl -fsSL https://sh.ameistad.com/debian_trixie/neovim_latest.sh | sudo bash
+
 set -euo pipefail
 
 # Colors for output
