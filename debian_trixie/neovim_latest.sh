@@ -1,12 +1,6 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 set -euo pipefail
-
-# Must run as root
-if [ "$EUID" -ne 0 ]; then
-  echo "Please run as root"
-  exit 1
-fi
 
 # Colors for output
 RED='\033[0;31m'
@@ -27,7 +21,7 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# Check if running as root
+# Check if running as root (remove duplicate)
 if [[ $EUID -ne 0 ]]; then
     print_error "This script must be run as root (use sudo)"
     exit 1
@@ -63,17 +57,23 @@ fi
 print_status "Fetching latest release information..."
 cd "$TEMP_DIR"
 
-API_RESPONSE=$(curl -s "https://api.github.com/repos/neovim/neovim/releases/latest")
-if [[ $? -ne 0 ]]; then
+if ! API_RESPONSE=$(curl -s "https://api.github.com/repos/neovim/neovim/releases/latest"); then
     print_error "Failed to fetch release information from GitHub API"
     exit 1
 fi
 
-# Extract download URL for linux x86_64 tarball
-DOWNLOAD_URL=$(echo "$API_RESPONSE" | jq -r '.assets[] | select(.name | test("nvim-linux-x86_64\\.tar\\.gz$")) | .browser_download_url')
+# Check if API response is valid JSON
+if ! echo "$API_RESPONSE" | jq . >/dev/null 2>&1; then
+    print_error "Invalid JSON response from GitHub API"
+    print_error "Response: $API_RESPONSE"
+    exit 1
+fi
+
+# Extract download URL for linux64 tarball (updated pattern)
+DOWNLOAD_URL=$(echo "$API_RESPONSE" | jq -r '.assets[] | select(.name | test("nvim-linux64\\.tar\\.gz$")) | .browser_download_url')
 
 if [[ -z "$DOWNLOAD_URL" || "$DOWNLOAD_URL" == "null" ]]; then
-    print_error "Could not find download URL for nvim-linux-x86_64.tar.gz"
+    print_error "Could not find download URL for nvim-linux64.tar.gz"
     print_error "Available assets:"
     echo "$API_RESPONSE" | jq -r '.assets[].name'
     exit 1
@@ -98,12 +98,17 @@ if [[ ! -f "$FILENAME" ]]; then
     exit 1
 fi
 
+# Check file size (should be > 1MB for a valid Neovim archive)
+FILE_SIZE=$(stat -c%s "$FILENAME")
+if [[ $FILE_SIZE -lt 1048576 ]]; then
+    print_error "Downloaded file is too small ($FILE_SIZE bytes), likely corrupted"
+    exit 1
+fi
+
 # Check if it's a valid gzip file
 if ! file "$FILENAME" | grep -q "gzip compressed"; then
     print_error "Downloaded file is not a valid gzip archive"
     print_error "File type: $(file "$FILENAME")"
-    print_error "File contents (first 100 bytes):"
-    head -c 100 "$FILENAME"
     exit 1
 fi
 
@@ -114,20 +119,24 @@ if ! tar xzf "$FILENAME"; then
     exit 1
 fi
 
-# The extracted directory will be nvim-linux-x86_64, not nvim-linux64
-EXTRACTED_DIR="nvim-linux-x86_64"
+# The extracted directory is nvim-linux64 (updated)
+EXTRACTED_DIR="nvim-linux64"
 
-# Remove existing installation if it exists
-if [[ -d "$INSTALL_DIR/$EXTRACTED_DIR" ]]; then
-    print_warning "Removing existing Neovim installation..."
-    rm -rf "$INSTALL_DIR/$EXTRACTED_DIR"
+# Verify extracted directory exists
+if [[ ! -d "$EXTRACTED_DIR" ]]; then
+    print_error "Expected directory '$EXTRACTED_DIR' not found after extraction"
+    print_error "Available directories:"
+    ls -la
+    exit 1
 fi
 
-# Also remove old nvim-linux64 directory if it exists
-if [[ -d "$INSTALL_DIR/nvim-linux64" ]]; then
-    print_warning "Removing old Neovim installation (nvim-linux64)..."
-    rm -rf "$INSTALL_DIR/nvim-linux64"
-fi
+# Remove existing installations
+for old_dir in "$INSTALL_DIR/nvim-linux64" "$INSTALL_DIR/nvim-linux-x86_64"; do
+    if [[ -d "$old_dir" ]]; then
+        print_warning "Removing existing Neovim installation: $(basename "$old_dir")"
+        rm -rf "$old_dir"
+    fi
+done
 
 # Move to installation directory
 print_status "Installing Neovim to $INSTALL_DIR..."
@@ -135,6 +144,7 @@ mv "$EXTRACTED_DIR" "$INSTALL_DIR/"
 
 # Create symlink for nvim binary
 print_status "Creating symlink in /usr/local/bin..."
+mkdir -p /usr/local/bin
 ln -sf "$INSTALL_DIR/$EXTRACTED_DIR/bin/nvim" /usr/local/bin/nvim
 
 # Create symlink for man pages
@@ -142,15 +152,16 @@ if [[ -d "$INSTALL_DIR/$EXTRACTED_DIR/share/man" ]]; then
     print_status "Setting up man pages..."
     mkdir -p /usr/local/share/man/man1
     ln -sf "$INSTALL_DIR/$EXTRACTED_DIR/share/man/man1/nvim.1" /usr/local/share/man/man1/nvim.1
-fi
 
-# Update man database
-if command -v mandb &> /dev/null; then
-    print_status "Updating man database..."
-    mandb -q
+    # Update man database
+    if command -v mandb &> /dev/null; then
+        print_status "Updating man database..."
+        mandb -q 2>/dev/null || true
+    fi
 fi
 
 # Verify installation
+print_status "Verifying installation..."
 if command -v nvim &> /dev/null; then
     NVIM_VERSION=$(nvim --version | head -n1)
     print_status "Neovim installed successfully!"
@@ -158,8 +169,10 @@ if command -v nvim &> /dev/null; then
     print_status "Binary location: $(which nvim)"
 else
     print_error "Installation failed - nvim command not found"
+    print_error "PATH: $PATH"
     exit 1
 fi
 
 print_status "Installation complete! All users can now use 'nvim' command."
 print_status "You may need to restart your shell or run 'hash -r' to refresh the command cache."
+
