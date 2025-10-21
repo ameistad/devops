@@ -1,5 +1,7 @@
-#!/bin/bash
-# filepath: ssh_setup.sh
+#!/usr/bin/env bash
+
+# Run with sudo
+# curl -fsSL https://sh.ameistad.com/debian_trixie/ssh_setup.sh | sudo bash
 
 set -euo pipefail
 
