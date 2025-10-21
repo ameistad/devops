@@ -5,6 +5,8 @@
 
 set -euo pipefail
 
+NEOVIM_VERSION="v0.11.4"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -24,7 +26,7 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# Check if running as root (remove duplicate)
+# Check if running as root
 if [[ $EUID -ne 0 ]]; then
     print_error "This script must be run as root (use sudo)"
     exit 1
@@ -33,6 +35,7 @@ fi
 # Set variables
 INSTALL_DIR="/usr/local"
 TEMP_DIR=$(mktemp -d)
+DOWNLOAD_URL="https://github.com/neovim/neovim/releases/download/${NEOVIM_VERSION}/nvim-linux-x86_64.tar.gz"
 
 # Cleanup function
 cleanup() {
@@ -44,54 +47,24 @@ cleanup() {
 trap cleanup EXIT
 
 print_status "Starting Neovim installation..."
+print_status "Target version: $NEOVIM_VERSION"
+print_status "Download URL: $DOWNLOAD_URL"
 
-# Check if curl and jq are installed
+# Check if curl is installed
 if ! command -v curl &> /dev/null; then
     print_error "curl is required but not installed. Installing curl..."
     apt update && apt install -y curl
 fi
 
-if ! command -v jq &> /dev/null; then
-    print_status "jq is required but not installed. Installing jq..."
-    apt update && apt install -y jq
-fi
-
-# Get the latest release info from GitHub API
-print_status "Fetching latest release information..."
 cd "$TEMP_DIR"
 
-if ! API_RESPONSE=$(curl -s "https://api.github.com/repos/neovim/neovim/releases/latest"); then
-    print_error "Failed to fetch release information from GitHub API"
-    exit 1
-fi
-
-# Check if API response is valid JSON
-if ! echo "$API_RESPONSE" | jq . >/dev/null 2>&1; then
-    print_error "Invalid JSON response from GitHub API"
-    print_error "Response: $API_RESPONSE"
-    exit 1
-fi
-
-# Extract download URL for linux64 tarball (updated pattern)
-DOWNLOAD_URL=$(echo "$API_RESPONSE" | jq -r '.assets[] | select(.name | test("nvim-linux64\\.tar\\.gz$")) | .browser_download_url')
-
-if [[ -z "$DOWNLOAD_URL" || "$DOWNLOAD_URL" == "null" ]]; then
-    print_error "Could not find download URL for nvim-linux64.tar.gz"
-    print_error "Available assets:"
-    echo "$API_RESPONSE" | jq -r '.assets[].name'
-    exit 1
-fi
-
-VERSION=$(echo "$API_RESPONSE" | jq -r '.tag_name')
-print_status "Found Neovim version: $VERSION"
-print_status "Download URL: $DOWNLOAD_URL"
-
-# Download latest Neovim
-print_status "Downloading Neovim $VERSION..."
-FILENAME=$(basename "$DOWNLOAD_URL")
+# Download Neovim
+print_status "Downloading Neovim $NEOVIM_VERSION..."
+FILENAME="nvim-linux-x86_64.tar.gz"
 
 if ! curl -L -o "$FILENAME" "$DOWNLOAD_URL"; then
-    print_error "Failed to download Neovim"
+    print_error "Failed to download Neovim from $DOWNLOAD_URL"
+    print_error "Please check if version $NEOVIM_VERSION exists"
     exit 1
 fi
 
@@ -104,9 +77,11 @@ fi
 # Check file size (should be > 1MB for a valid Neovim archive)
 FILE_SIZE=$(stat -c%s "$FILENAME")
 if [[ $FILE_SIZE -lt 1048576 ]]; then
-    print_error "Downloaded file is too small ($FILE_SIZE bytes), likely corrupted"
+    print_error "Downloaded file is too small ($FILE_SIZE bytes), likely corrupted or version doesn't exist"
     exit 1
 fi
+
+print_status "Downloaded file size: $(( FILE_SIZE / 1024 / 1024 ))MB"
 
 # Check if it's a valid gzip file
 if ! file "$FILENAME" | grep -q "gzip compressed"; then
@@ -122,16 +97,24 @@ if ! tar xzf "$FILENAME"; then
     exit 1
 fi
 
-# The extracted directory is nvim-linux64 (updated)
-EXTRACTED_DIR="nvim-linux64"
+# The extracted directory could be either nvim-linux-x86_64 or nvim-linux64
+# Let's detect which one exists
+EXTRACTED_DIR=""
+for dir in "nvim-linux-x86_64" "nvim-linux64"; do
+    if [[ -d "$dir" ]]; then
+        EXTRACTED_DIR="$dir"
+        break
+    fi
+done
 
-# Verify extracted directory exists
-if [[ ! -d "$EXTRACTED_DIR" ]]; then
-    print_error "Expected directory '$EXTRACTED_DIR' not found after extraction"
+if [[ -z "$EXTRACTED_DIR" ]]; then
+    print_error "Could not find extracted Neovim directory"
     print_error "Available directories:"
     ls -la
     exit 1
 fi
+
+print_status "Found extracted directory: $EXTRACTED_DIR"
 
 # Remove existing installations
 for old_dir in "$INSTALL_DIR/nvim-linux64" "$INSTALL_DIR/nvim-linux-x86_64"; do
@@ -166,9 +149,9 @@ fi
 # Verify installation
 print_status "Verifying installation..."
 if command -v nvim &> /dev/null; then
-    NVIM_VERSION=$(nvim --version | head -n1)
+    NVIM_VERSION_OUTPUT=$(nvim --version | head -n1)
     print_status "Neovim installed successfully!"
-    print_status "Version: $NVIM_VERSION"
+    print_status "Installed version: $NVIM_VERSION_OUTPUT"
     print_status "Binary location: $(which nvim)"
 else
     print_error "Installation failed - nvim command not found"
@@ -178,4 +161,5 @@ fi
 
 print_status "Installation complete! All users can now use 'nvim' command."
 print_status "You may need to restart your shell or run 'hash -r' to refresh the command cache."
-
+print_status ""
+print_status "To update to a newer version, simply edit the NEOVIM_VERSION variable at the top of this script."
