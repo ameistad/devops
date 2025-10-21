@@ -61,7 +61,7 @@ echo "Updating system packages..."
 pacman -Syu --noconfirm
 
 echo "Installing essential packages..."
-pacman -S --noconfirm sudo neovim curl python python-pip git zsh openssh which
+pacman -S --noconfirm sudo neovim curl python python-pip git zsh openssh which base-devel nodejs npm
 
 echo "Enabling SSH service..."
 systemctl enable sshd
