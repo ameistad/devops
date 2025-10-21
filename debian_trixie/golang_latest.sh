@@ -1,15 +1,9 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-# Script to download and install latest Go for all users on Debian 13
-# Requires root privileges
+# Run with sudo
+# curl -fsSL https://sh.ameistad.com/debian_trixie/golang_latest.sh | sudo bash
 
-set -euo pipefail
-
-# Must run as root
-if [ "$EUID" -ne 0 ]; then
-  echo "Please run as root"
-  exit 1
-fi
+GO_VERSION="1.25.3"
 
 # Colors for output
 RED='\033[0;31m'
@@ -35,8 +29,8 @@ print_info() {
     echo -e "${BLUE}[NOTE]${NC} $1"
 }
 
-# Check if running as root - handle EUID safely
-if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
+# Check if running as root
+if [[ $EUID -ne 0 ]]; then
     print_error "This script must be run as root (use sudo)"
     exit 1
 fi
@@ -44,9 +38,10 @@ fi
 # Set variables
 INSTALL_DIR="/usr/local"
 TEMP_DIR=$(mktemp -d)
-GO_API_URL="https://go.dev/dl/?mode=json"
 ARCH="amd64"
 OS="linux"
+FILENAME="go${GO_VERSION}.${OS}-${ARCH}.tar.gz"
+DOWNLOAD_URL="https://go.dev/dl/${FILENAME}"
 
 # Cleanup function
 cleanup() {
@@ -58,81 +53,25 @@ cleanup() {
 trap cleanup EXIT
 
 print_status "Starting Go installation..."
+print_status "Target version: $GO_VERSION"
+print_status "Download URL: $DOWNLOAD_URL"
 
-# Check if curl and jq are installed
+# Check if curl is installed
 if ! command -v curl &> /dev/null; then
     print_status "Installing curl..."
     apt update && apt install -y curl
 fi
 
-if ! command -v jq &> /dev/null; then
-    print_status "Installing jq..."
-    apt update && apt install -y jq
-fi
-
-# Function to get Go version via web scraping
-get_go_version_fallback() {
-    print_status "Using fallback method to get Go version..."
-    # Try multiple patterns to find the version
-    local version
-    version=$(curl -s https://go.dev/dl/ | grep -oP 'go1\.\d+\.\d+' | head -1)
-    if [[ -z "$version" ]]; then
-        version=$(curl -s https://golang.org/dl/ | grep -oP 'go1\.\d+\.\d+' | head -1)
-    fi
-    if [[ -z "$version" ]]; then
-        # Try GitHub releases as last resort
-        version=$(curl -s https://api.github.com/repos/golang/go/releases/latest | jq -r '.tag_name')
-    fi
-    echo "$version"
-}
-
-# Get the latest Go version info
-print_status "Fetching latest Go version information..."
 cd "$TEMP_DIR"
-
-LATEST_VERSION=""
-
-# Try the official API first
-if curl -s -f -L "$GO_API_URL" -o go_releases.json; then
-    if jq empty go_releases.json 2>/dev/null; then
-        LATEST_VERSION=$(jq -r '.[0].version' go_releases.json)
-        print_status "Got version from API: $LATEST_VERSION"
-    else
-        print_warning "API response is not valid JSON, trying fallback..."
-        LATEST_VERSION=$(get_go_version_fallback)
-    fi
-else
-    print_warning "API request failed, trying fallback..."
-    LATEST_VERSION=$(get_go_version_fallback)
-fi
-
-# Final validation
-if [[ -z "$LATEST_VERSION" || "$LATEST_VERSION" == "null" ]]; then
-    print_error "Could not determine latest Go version"
-    exit 1
-fi
-
-# Ensure version starts with 'go'
-if [[ ! "$LATEST_VERSION" =~ ^go ]]; then
-    LATEST_VERSION="go${LATEST_VERSION}"
-fi
-
-# Construct download filename and URL
-FILENAME="${LATEST_VERSION}.${OS}-${ARCH}.tar.gz"
-DOWNLOAD_URL="https://go.dev/dl/${FILENAME}"
-
-print_status "Latest Go version: $LATEST_VERSION"
-print_status "Download URL: $DOWNLOAD_URL"
 
 # Check if Go is already installed and get current version
 if command -v go &> /dev/null; then
-    CURRENT_VERSION=$(go version | awk '{print $3}')
-    print_info "Currently installed Go version: $CURRENT_VERSION"
+    CURRENT_VERSION=$(go version | awk '{print $3}' | sed 's/go//')
+    print_info "Currently installed Go version: go$CURRENT_VERSION"
 
-    if [[ "$CURRENT_VERSION" == "$LATEST_VERSION" ]]; then
-        print_info "Latest version is already installed!"
-        read -p "Do you want to reinstall? (y/N): " -n 1 -r
-        echo
+    if [[ "$CURRENT_VERSION" == "$GO_VERSION" ]]; then
+        print_info "Target version is already installed!"
+        read -p "Do you want to reinstall? (y/N): " -r </dev/tty
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
             print_status "Installation cancelled."
             exit 0
@@ -140,8 +79,8 @@ if command -v go &> /dev/null; then
     fi
 fi
 
-# Download latest Go
-print_status "Downloading Go $LATEST_VERSION..."
+# Download Go
+print_status "Downloading Go $GO_VERSION..."
 if ! curl -L -o "$FILENAME" "$DOWNLOAD_URL"; then
     print_error "Failed to download Go from $DOWNLOAD_URL"
     # Try golang.org mirror
@@ -149,6 +88,7 @@ if ! curl -L -o "$FILENAME" "$DOWNLOAD_URL"; then
     DOWNLOAD_URL="https://golang.org/dl/${FILENAME}"
     if ! curl -L -o "$FILENAME" "$DOWNLOAD_URL"; then
         print_error "Failed to download Go from both sources"
+        print_error "Please check if version $GO_VERSION exists"
         exit 1
     fi
 fi
@@ -163,10 +103,11 @@ fi
 FILE_SIZE=$(stat -c%s "$FILENAME")
 if [[ $FILE_SIZE -lt 50000000 ]]; then  # Less than ~50MB suggests an error page
     print_error "Downloaded file seems too small ($FILE_SIZE bytes)"
-    print_error "First 200 characters of downloaded file:"
-    head -c 200 "$FILENAME"
+    print_error "This might indicate the version doesn't exist or download failed"
     exit 1
 fi
+
+print_status "Downloaded file size: $(( FILE_SIZE / 1024 / 1024 ))MB"
 
 # Check if it's a valid tar.gz file
 if ! file "$FILENAME" | grep -q "gzip compressed"; then
@@ -241,9 +182,9 @@ chmod +x /usr/local/bin/setup-go-user
 # Verify installation
 print_status "Verifying Go installation..."
 if "$INSTALL_DIR/go/bin/go" version &> /dev/null; then
-    GO_VERSION=$("$INSTALL_DIR/go/bin/go" version)
+    GO_VERSION_OUTPUT=$("$INSTALL_DIR/go/bin/go" version)
     print_status "Go installed successfully!"
-    print_status "Version: $GO_VERSION"
+    print_status "Version: $GO_VERSION_OUTPUT"
     print_status "Installation path: $INSTALL_DIR/go"
 else
     print_error "Installation failed - Go binary not working"
@@ -264,3 +205,5 @@ print_info ""
 print_info "To use Go immediately in current session:"
 print_info "  Run: source /etc/profile.d/go.sh"
 print_info "  Or restart your shell session"
+print_info ""
+print_info "To update to a newer version, edit the GO_VERSION variable at the top of this script."
