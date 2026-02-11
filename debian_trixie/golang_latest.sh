@@ -3,60 +3,39 @@
 # Run with sudo
 # curl -fsSL https://sh.ameistad.com/debian_trixie/golang_latest.sh | sudo bash
 
-GO_VERSION="1.25.3"
+set -euo pipefail
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
-
-# Function to print colored output
-print_status() {
-    echo -e "${GREEN}[INFO]${NC} $1"
-}
-
-print_warning() {
-    echo -e "${YELLOW}[WARN]${NC} $1"
-}
-
-print_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
-}
-
-print_info() {
-    echo -e "${BLUE}[NOTE]${NC} $1"
-}
-
-# Check if running as root
-if [[ $EUID -ne 0 ]]; then
-    print_error "This script must be run as root (use sudo)"
-    exit 1
+SCRIPT_DIR="$(dirname "${BASH_SOURCE[0]:-}")"
+if [[ -f "$SCRIPT_DIR/common.sh" ]]; then
+    source "$SCRIPT_DIR/common.sh"
+else
+    eval "$(curl -fsSL https://sh.ameistad.com/debian_trixie/common.sh)"
 fi
+
+require_root
+
+GO_VERSION="1.25.3"
 
 # Set variables
 INSTALL_DIR="/usr/local"
 TEMP_DIR=$(mktemp -d)
-ARCH="amd64"
+ARCH=$(detect_arch)
 OS="linux"
 FILENAME="go${GO_VERSION}.${OS}-${ARCH}.tar.gz"
 DOWNLOAD_URL="https://go.dev/dl/${FILENAME}"
 
-# Cleanup function
 cleanup() {
     print_status "Cleaning up temporary files..."
     rm -rf "$TEMP_DIR"
 }
 
-# Set trap to cleanup on exit
 trap cleanup EXIT
 
 print_status "Starting Go installation..."
 print_status "Target version: $GO_VERSION"
+print_status "Architecture: $ARCH"
 print_status "Download URL: $DOWNLOAD_URL"
 
-# Check if curl is installed
 if ! command -v curl &> /dev/null; then
     print_status "Installing curl..."
     apt update && apt install -y curl
@@ -64,7 +43,6 @@ fi
 
 cd "$TEMP_DIR"
 
-# Check if Go is already installed and get current version
 if command -v go &> /dev/null; then
     CURRENT_VERSION=$(go version | awk '{print $3}' | sed 's/go//')
     print_info "Currently installed Go version: go$CURRENT_VERSION"
@@ -79,11 +57,9 @@ if command -v go &> /dev/null; then
     fi
 fi
 
-# Download Go
 print_status "Downloading Go $GO_VERSION..."
 if ! curl -L -o "$FILENAME" "$DOWNLOAD_URL"; then
     print_error "Failed to download Go from $DOWNLOAD_URL"
-    # Try golang.org mirror
     print_status "Trying golang.org mirror..."
     DOWNLOAD_URL="https://golang.org/dl/${FILENAME}"
     if ! curl -L -o "$FILENAME" "$DOWNLOAD_URL"; then
@@ -93,15 +69,13 @@ if ! curl -L -o "$FILENAME" "$DOWNLOAD_URL"; then
     fi
 fi
 
-# Verify the download
 if [[ ! -f "$FILENAME" ]]; then
     print_error "Downloaded file not found"
     exit 1
 fi
 
-# Check file size (Go releases are typically > 100MB)
 FILE_SIZE=$(stat -c%s "$FILENAME")
-if [[ $FILE_SIZE -lt 50000000 ]]; then  # Less than ~50MB suggests an error page
+if [[ $FILE_SIZE -lt 50000000 ]]; then
     print_error "Downloaded file seems too small ($FILE_SIZE bytes)"
     print_error "This might indicate the version doesn't exist or download failed"
     exit 1
@@ -109,34 +83,28 @@ fi
 
 print_status "Downloaded file size: $(( FILE_SIZE / 1024 / 1024 ))MB"
 
-# Check if it's a valid tar.gz file
 if ! file "$FILENAME" | grep -q "gzip compressed"; then
     print_error "Downloaded file is not a valid gzip archive"
     print_error "File type: $(file "$FILENAME")"
     exit 1
 fi
 
-# Remove existing Go installation
 if [[ -d "$INSTALL_DIR/go" ]]; then
     print_warning "Removing existing Go installation..."
     rm -rf "$INSTALL_DIR/go"
 fi
 
-# Extract Go to /usr/local
 print_status "Extracting Go to $INSTALL_DIR..."
 if ! tar -C "$INSTALL_DIR" -xzf "$FILENAME"; then
     print_error "Failed to extract Go archive"
     exit 1
 fi
 
-# Set proper permissions
 chown -R root:root "$INSTALL_DIR/go"
 chmod -R 755 "$INSTALL_DIR/go"
 
-# Create profile script for all users
 print_status "Setting up Go environment for all users..."
 cat > /etc/profile.d/go.sh << 'EOF'
-# Go environment variables
 export GOROOT=/usr/local/go
 export PATH=$PATH:$GOROOT/bin
 export GOPATH=$HOME/go
@@ -145,17 +113,13 @@ EOF
 
 chmod 644 /etc/profile.d/go.sh
 
-# Source the profile for current session
 source /etc/profile.d/go.sh
 
-# Create GOPATH directory structure template
 print_status "Creating Go workspace template..."
 mkdir -p /etc/skel/go/{bin,src,pkg}
 
-# For existing users, we'll create a helper script
 cat > /usr/local/bin/setup-go-user << 'EOF'
 #!/bin/bash
-# Script to set up Go workspace for current user
 
 USER_GOPATH="$HOME/go"
 if [[ ! -d "$USER_GOPATH" ]]; then
@@ -179,7 +143,6 @@ EOF
 
 chmod +x /usr/local/bin/setup-go-user
 
-# Verify installation
 print_status "Verifying Go installation..."
 if "$INSTALL_DIR/go/bin/go" version &> /dev/null; then
     GO_VERSION_OUTPUT=$("$INSTALL_DIR/go/bin/go" version)

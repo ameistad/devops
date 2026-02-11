@@ -1,23 +1,37 @@
-# Various ansible playbooks for different tasks
+# Debian 13 (Trixie) Server Setup Scripts
 
-## Prerequisites
-- Server installed with Debian 12.
-- Ansible and sshpass installed on your local machine
+Shell scripts for setting up and configuring Debian 13 (Trixie) servers. Each script can be run independently via curl.
 
-## Initial setup
+## Scripts
+
+### Initial setup
+Creates a user with sudo privileges, installs essential packages, sets hostname, and configures dotfiles.
 ```sh
-apt update && apt install curl -y
-
-curl -o initial_setup.sh https://raw.githubusercontent.com/ameistad/devops/refs/heads/main/initial_setup.sh
-chmod +x initial_setup.sh
-./initial_setup.sh
-
+curl -fsSL https://sh.ameistad.com/debian_trixie/initial_setup.sh | bash
 ```
 
-
-## Run playbooks first time
+### SSH hardening
+Disables root login and password authentication.
 ```sh
-ansible-playbook <playbook>.yml --limit <server-name> --ask-pass --ask-become-pass
+curl -fsSL https://sh.ameistad.com/debian_trixie/ssh_setup.sh | sudo bash
+```
+
+### Server hardening
+Sets up UFW firewall, Fail2ban, and unattended security upgrades.
+```sh
+curl -fsSL https://sh.ameistad.com/debian_trixie/hardening.sh | sudo bash
+```
+
+### Install Go (latest)
+Installs Go system-wide with environment configuration. Supports amd64 and arm64.
+```sh
+curl -fsSL https://sh.ameistad.com/debian_trixie/golang_latest.sh | sudo bash
+```
+
+### Install Neovim (latest)
+Installs Neovim from GitHub releases. Supports amd64 and arm64.
+```sh
+curl -fsSL https://sh.ameistad.com/debian_trixie/neovim_latest.sh | sudo bash
 ```
 
 ## Ghostty support
