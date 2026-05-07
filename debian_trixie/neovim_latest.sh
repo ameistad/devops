@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
-# Run with sudo
-# curl -fsSL https://sh.ameistad.com/debian_trixie/neovim_latest.sh | sudo bash
+# Run as root
+# curl -fsSL https://sh.ameistad.com/debian_trixie/neovim_latest.sh | bash
 
 set -euo pipefail
 
@@ -91,9 +91,8 @@ fi
 
 print_status "Downloaded file size: $(( FILE_SIZE / 1024 / 1024 ))MB"
 
-if ! file "$FILENAME" | grep -q "gzip compressed"; then
+if ! gzip -t "$FILENAME"; then
     print_error "Downloaded file is not a valid gzip archive"
-    print_error "File type: $(file "$FILENAME")"
     exit 1
 fi
 

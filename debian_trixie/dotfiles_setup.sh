@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
-# Run with sudo
-# curl -fsSL https://sh.ameistad.com/debian_trixie/dotfiles_setup.sh | sudo bash
+# Run as root
+# curl -fsSL https://sh.ameistad.com/debian_trixie/dotfiles_setup.sh | bash
 
 set -euo pipefail
 

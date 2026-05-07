@@ -27,7 +27,7 @@ print_info() {
 
 require_root() {
     if [[ $EUID -ne 0 ]]; then
-        print_error "This script must be run as root (use sudo)"
+        print_error "This script must be run as root"
         exit 1
     fi
 }

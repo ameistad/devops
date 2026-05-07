@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
-# Run with sudo
-# curl -fsSL https://sh.ameistad.com/debian_trixie/hardening.sh | sudo bash
-# curl -fsSL https://sh.ameistad.com/debian_trixie/hardening.sh | sudo env OPEN_TCP_PORTS="80,443" bash
+# Run as root
+# curl -fsSL https://sh.ameistad.com/debian_trixie/hardening.sh | bash
+# curl -fsSL https://sh.ameistad.com/debian_trixie/hardening.sh | OPEN_TCP_PORTS="80,443" bash
 
 set -euo pipefail
 

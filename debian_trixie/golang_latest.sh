@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
-# Run with sudo
-# curl -fsSL https://sh.ameistad.com/debian_trixie/golang_latest.sh | sudo bash
+# Run as root
+# curl -fsSL https://sh.ameistad.com/debian_trixie/golang_latest.sh | bash
 
 set -euo pipefail
 
@@ -58,11 +58,11 @@ if command -v go &> /dev/null; then
 fi
 
 print_status "Downloading Go $GO_VERSION..."
-if ! curl -L -o "$FILENAME" "$DOWNLOAD_URL"; then
+if ! curl -fL -o "$FILENAME" "$DOWNLOAD_URL"; then
     print_error "Failed to download Go from $DOWNLOAD_URL"
     print_status "Trying golang.org mirror..."
     DOWNLOAD_URL="https://golang.org/dl/${FILENAME}"
-    if ! curl -L -o "$FILENAME" "$DOWNLOAD_URL"; then
+    if ! curl -fL -o "$FILENAME" "$DOWNLOAD_URL"; then
         print_error "Failed to download Go from both sources"
         print_error "Please check if version $GO_VERSION exists"
         exit 1
@@ -83,9 +83,8 @@ fi
 
 print_status "Downloaded file size: $(( FILE_SIZE / 1024 / 1024 ))MB"
 
-if ! file "$FILENAME" | grep -q "gzip compressed"; then
+if ! gzip -t "$FILENAME"; then
     print_error "Downloaded file is not a valid gzip archive"
-    print_error "File type: $(file "$FILENAME")"
     exit 1
 fi
 
