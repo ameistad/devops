@@ -22,7 +22,7 @@ curl -fsSL https://sh.ameistad.com/debian_trixie/hardening.sh | OPEN_TCP_PORTS="
 ```
 
 ### Root dotfiles
-Installs root shell prerequisites, clones or updates dotfiles in `/root/dotfiles`, links `/root/.zshrc`, writes `/root/.localrc`, and sets root's shell to zsh.
+Installs root shell prerequisites, clones or updates dotfiles in `/root/dotfiles`, links `/root/.zshrc` and `/root/.config/nvim`, writes `/root/.localrc`, and sets root's shell to zsh.
 ```sh
 curl -fsSL https://sh.ameistad.com/debian_trixie/dotfiles_setup.sh | bash
 ```

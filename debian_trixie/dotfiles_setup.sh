@@ -18,6 +18,7 @@ DOTFILES_REPO="${DOTFILES_REPO:-https://github.com/ameistad/dotfiles}"
 DOTFILES_DIR="${DOTFILES_DIR:-/root/dotfiles}"
 ZSHRC="/root/.zshrc"
 LOCALRC="/root/.localrc"
+NVIM_CONFIG="/root/.config/nvim"
 
 link_file() {
     local source="$1"
@@ -30,6 +31,7 @@ link_file() {
         return
     fi
 
+    mkdir -p "$(dirname "$target")"
     ln -s "$source" "$target"
 }
 
@@ -67,6 +69,14 @@ if [[ -n "$ZSHRC_SOURCE" ]]; then
     chown -h root:root "$ZSHRC"
 else
     print_warning "No .zshrc found at $DOTFILES_DIR/zsh/.zshrc or $DOTFILES_DIR/.zshrc; skipping .zshrc link."
+fi
+
+if [[ -d "$DOTFILES_DIR/nvim" ]]; then
+    print_status "Linking root Neovim config..."
+    link_file "$DOTFILES_DIR/nvim" "$NVIM_CONFIG"
+    chown -h root:root "$NVIM_CONFIG"
+else
+    print_warning "$DOTFILES_DIR/nvim not found; skipping Neovim config link."
 fi
 
 print_status "Writing root .localrc..."
