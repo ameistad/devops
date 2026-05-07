@@ -32,6 +32,18 @@ require_root() {
     fi
 }
 
+ensure_root_authorized_keys() {
+    if [[ ! -s /root/.ssh/authorized_keys ]]; then
+        print_error "/root/.ssh/authorized_keys is missing or empty."
+        print_error "Add your SSH public key for root before disabling password authentication."
+        exit 1
+    fi
+
+    chown root:root /root/.ssh /root/.ssh/authorized_keys
+    chmod 700 /root/.ssh
+    chmod 600 /root/.ssh/authorized_keys
+}
+
 configure_ssh_root_key_only() {
     local ssh_config="${1:-/etc/ssh/sshd_config}"
 

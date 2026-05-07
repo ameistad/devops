@@ -14,6 +14,7 @@ fi
 
 require_root
 
+ensure_root_authorized_keys
 configure_ssh_root_key_only
 
 print_status "SSH configuration completed successfully!"
