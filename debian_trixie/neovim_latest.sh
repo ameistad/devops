@@ -14,13 +14,40 @@ fi
 
 require_root
 
-NEOVIM_VERSION="v0.11.4"
+NEOVIM_VERSION="${NEOVIM_VERSION:-latest}"
+NEOVIM_LATEST_URL="https://github.com/neovim/neovim/releases/latest"
+
+if ! command -v curl &> /dev/null; then
+    print_error "curl is required but not installed. Installing curl..."
+    apt update && apt install -y curl
+fi
+
+resolve_latest_neovim_version() {
+    local latest_url
+    local version
+
+    latest_url=$(curl -fsSLI -o /dev/null -w '%{url_effective}' "$NEOVIM_LATEST_URL")
+    version="${latest_url##*/}"
+
+    if [[ ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        print_error "Could not resolve latest Neovim release from $NEOVIM_LATEST_URL"
+        print_error "Resolved URL: $latest_url"
+        exit 1
+    fi
+
+    echo "$version"
+}
+
+if [[ "$NEOVIM_VERSION" == "latest" ]]; then
+    print_status "Resolving latest Neovim release..."
+    NEOVIM_VERSION="$(resolve_latest_neovim_version)"
+fi
 
 # Map architecture to Neovim's naming convention
 ARCH=$(detect_arch)
 case "$ARCH" in
     amd64) NVIM_ARCH="x86_64" ;;
-    arm64) NVIM_ARCH="aarch64" ;;
+    arm64) NVIM_ARCH="arm64" ;;
 esac
 
 # Set variables
@@ -41,16 +68,11 @@ print_status "Target version: $NEOVIM_VERSION"
 print_status "Architecture: $NVIM_ARCH"
 print_status "Download URL: $DOWNLOAD_URL"
 
-if ! command -v curl &> /dev/null; then
-    print_error "curl is required but not installed. Installing curl..."
-    apt update && apt install -y curl
-fi
-
 cd "$TEMP_DIR"
 
 print_status "Downloading Neovim $NEOVIM_VERSION..."
 
-if ! curl -L -o "$FILENAME" "$DOWNLOAD_URL"; then
+if ! curl -fL -o "$FILENAME" "$DOWNLOAD_URL"; then
     print_error "Failed to download Neovim from $DOWNLOAD_URL"
     print_error "Please check if version $NEOVIM_VERSION exists"
     exit 1
@@ -82,7 +104,7 @@ if ! tar xzf "$FILENAME"; then
 fi
 
 EXTRACTED_DIR=""
-for dir in "nvim-linux-x86_64" "nvim-linux-aarch64" "nvim-linux64"; do
+for dir in "nvim-linux-x86_64" "nvim-linux-arm64" "nvim-linux-aarch64" "nvim-linux64"; do
     if [[ -d "$dir" ]]; then
         EXTRACTED_DIR="$dir"
         break
@@ -98,7 +120,7 @@ fi
 
 print_status "Found extracted directory: $EXTRACTED_DIR"
 
-for old_dir in "$INSTALL_DIR/nvim-linux64" "$INSTALL_DIR/nvim-linux-x86_64" "$INSTALL_DIR/nvim-linux-aarch64"; do
+for old_dir in "$INSTALL_DIR/nvim-linux64" "$INSTALL_DIR/nvim-linux-x86_64" "$INSTALL_DIR/nvim-linux-arm64" "$INSTALL_DIR/nvim-linux-aarch64"; do
     if [[ -d "$old_dir" ]]; then
         print_warning "Removing existing Neovim installation: $(basename "$old_dir")"
         rm -rf "$old_dir"
@@ -138,4 +160,5 @@ fi
 print_status "Installation complete! All users can now use 'nvim' command."
 print_status "You may need to restart your shell or run 'hash -r' to refresh the command cache."
 print_status ""
-print_status "To update to a newer version, simply edit the NEOVIM_VERSION variable at the top of this script."
+print_status "By default this script installs the latest stable release from GitHub."
+print_status "To pin a version, run it with NEOVIM_VERSION=vX.Y.Z."
