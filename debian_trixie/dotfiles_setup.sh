@@ -53,12 +53,20 @@ fi
 
 chown -R root:root "$DOTFILES_DIR"
 
-if [[ -f "$DOTFILES_DIR/.zshrc" ]]; then
+ZSHRC_SOURCE=""
+for candidate in "$DOTFILES_DIR/zsh/.zshrc" "$DOTFILES_DIR/.zshrc"; do
+    if [[ -f "$candidate" ]]; then
+        ZSHRC_SOURCE="$candidate"
+        break
+    fi
+done
+
+if [[ -n "$ZSHRC_SOURCE" ]]; then
     print_status "Linking root .zshrc..."
-    link_file "$DOTFILES_DIR/.zshrc" "$ZSHRC"
+    link_file "$ZSHRC_SOURCE" "$ZSHRC"
     chown -h root:root "$ZSHRC"
 else
-    print_warning "$DOTFILES_DIR/.zshrc not found; skipping .zshrc link."
+    print_warning "No .zshrc found at $DOTFILES_DIR/zsh/.zshrc or $DOTFILES_DIR/.zshrc; skipping .zshrc link."
 fi
 
 print_status "Writing root .localrc..."
