@@ -18,8 +18,9 @@ echo "This script will perform the following actions:"
 echo "1. Update system packages"
 echo "2. Install essential packages"
 echo "3. Create or update a user with sudo privileges"
-echo "4. Set up the user's SSH key"
-echo "5. Install dotfiles and set up zsh"
+echo "4. Set up SSH keys for root and the first user"
+echo "5. Configure SSH for root key login and no password authentication"
+echo "6. Install dotfiles and set up zsh"
 
 read -p "Enter the username to create/update for first user: " USERNAME </dev/tty
 if [ -z "$USERNAME" ]; then
@@ -53,6 +54,38 @@ apt update && apt upgrade -y
 print_status "Installing essential packages..."
 apt install -y sudo neovim curl python3 python3-pip git zsh openssh-server
 
+AUTHORIZED_KEYS_URL="https://ameistad.com/pub_key.txt"
+AUTHORIZED_KEYS_TMP="$(mktemp)"
+trap 'rm -f "$AUTHORIZED_KEYS_TMP"' EXIT
+
+print_status "Downloading SSH public key..."
+curl -fsSL "$AUTHORIZED_KEYS_URL" -o "$AUTHORIZED_KEYS_TMP"
+
+install_authorized_keys() {
+  local ssh_dir="$1"
+  local owner="$2"
+  local mode="$3"
+  local authorized_keys="$ssh_dir/authorized_keys"
+
+  mkdir -p "$ssh_dir"
+  chown "$owner:$owner" "$ssh_dir"
+  chmod 700 "$ssh_dir"
+
+  if [[ "$mode" == "replace" || ! -f "$authorized_keys" ]]; then
+    install -m 600 -o "$owner" -g "$owner" "$AUTHORIZED_KEYS_TMP" "$authorized_keys"
+    return
+  fi
+
+  touch "$authorized_keys"
+  chown "$owner:$owner" "$authorized_keys"
+  chmod 600 "$authorized_keys"
+
+  while IFS= read -r key; do
+    [[ -z "$key" ]] && continue
+    grep -qxF "$key" "$authorized_keys" || echo "$key" >> "$authorized_keys"
+  done < "$AUTHORIZED_KEYS_TMP"
+}
+
 print_status "Setting up the user..."
 if id "$USERNAME" &>/dev/null; then
   print_status "User $USERNAME exists, skipping creation."
@@ -64,13 +97,10 @@ usermod -aG sudo "$USERNAME"
 usermod -s "$(which zsh)" "$USERNAME"
 
 SSH_DIR="/home/$USERNAME/.ssh"
-mkdir -p "$SSH_DIR"
-chown "$USERNAME:$USERNAME" "$SSH_DIR"
-chmod 700 "$SSH_DIR"
+install_authorized_keys "$SSH_DIR" "$USERNAME" "replace"
+install_authorized_keys "/root/.ssh" "root" "append"
 
-curl -fsSL https://ameistad.com/pub_key.txt -o "$SSH_DIR/authorized_keys"
-chown "$USERNAME:$USERNAME" "$SSH_DIR/authorized_keys"
-chmod 600 "$SSH_DIR/authorized_keys"
+configure_ssh_root_key_only
 
 DOTFILES_DIR="/home/$USERNAME/dotfiles"
 if [ -d "$DOTFILES_DIR" ]; then

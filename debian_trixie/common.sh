@@ -32,6 +32,59 @@ require_root() {
     fi
 }
 
+configure_ssh_root_key_only() {
+    local ssh_config="${1:-/etc/ssh/sshd_config}"
+
+    if [[ ! -f "${ssh_config}.backup" ]]; then
+        print_status "Creating backup of SSH config at ${ssh_config}.backup"
+        cp "$ssh_config" "${ssh_config}.backup"
+    fi
+
+    print_status "Configuring SSH to allow root key login and disable password authentication..."
+
+    update_ssh_config() {
+        local setting="$1"
+        local value="$2"
+
+        if grep -q "^#\?${setting}" "$ssh_config"; then
+            sed -i "s/^#\?${setting}.*/${setting} ${value}/" "$ssh_config"
+            print_status "Updated: ${setting} ${value}"
+        else
+            echo "${setting} ${value}" >> "$ssh_config"
+            print_status "Added: ${setting} ${value}"
+        fi
+    }
+
+    update_ssh_config "PermitRootLogin" "prohibit-password"
+    update_ssh_config "PasswordAuthentication" "no"
+    update_ssh_config "KbdInteractiveAuthentication" "no"
+    update_ssh_config "ChallengeResponseAuthentication" "no"
+    update_ssh_config "UseDNS" "no"
+
+    print_status "Validating SSH configuration..."
+    if sshd -t; then
+        print_status "SSH configuration is valid"
+    else
+        print_error "SSH configuration is invalid! Restoring backup..."
+        cp "${ssh_config}.backup" "$ssh_config"
+        exit 1
+    fi
+
+    print_status "Restarting SSH service..."
+    if systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null; then
+        print_status "SSH service restarted successfully"
+    else
+        print_error "Failed to restart SSH service"
+        exit 1
+    fi
+
+    if systemctl is-active --quiet ssh || systemctl is-active --quiet sshd; then
+        print_status "SSH service is running"
+    else
+        print_warning "SSH service may not be running properly"
+    fi
+}
+
 detect_arch() {
     local machine
     machine=$(uname -m)

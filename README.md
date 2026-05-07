@@ -5,13 +5,13 @@ Shell scripts for setting up and configuring Debian 13 (Trixie) servers. Each sc
 ## Scripts
 
 ### Initial setup
-Creates a user with sudo privileges, installs essential packages, sets hostname, and configures dotfiles.
+Creates a user with sudo privileges, installs essential packages, sets hostname, configures root and user SSH keys, applies key-only SSH login, and configures dotfiles.
 ```sh
 curl -fsSL https://sh.ameistad.com/debian_trixie/initial_setup.sh | bash
 ```
 
 ### SSH hardening
-Disables root login and password authentication.
+Allows root login with SSH keys only and disables password authentication.
 ```sh
 curl -fsSL https://sh.ameistad.com/debian_trixie/ssh_setup.sh | sudo bash
 ```
