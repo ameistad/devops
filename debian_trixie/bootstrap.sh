@@ -18,7 +18,6 @@ print_status "Installing shared setup prerequisites..."
 apt update
 DEBIAN_FRONTEND=noninteractive apt install -y \
     ca-certificates \
-    curl \
     gzip \
     tar \
     git \

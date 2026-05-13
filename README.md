@@ -2,10 +2,17 @@
 
 Shell scripts for setting up and configuring Debian 13 (Trixie) servers. Each script can be run independently via curl.
 
+## Prerequisites
+
+The scripts are fetched with `curl`, so install it first:
+```sh
+apt update && apt install -y curl
+```
+
 ## Scripts
 
 ### Bootstrap
-Installs shared prerequisites used by the setup scripts: certificates, curl, gzip, tar, git, zsh, and OpenSSH server.
+Installs shared prerequisites used by the setup scripts: certificates, gzip, tar, git, zsh, and OpenSSH server.
 ```sh
 curl -fsSL https://sh.ameistad.com/debian_trixie/bootstrap.sh | bash
 ```
