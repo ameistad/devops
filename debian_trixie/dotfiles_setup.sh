@@ -37,7 +37,7 @@ link_file() {
 
 print_status "Installing dotfiles prerequisites..."
 apt update
-DEBIAN_FRONTEND=noninteractive apt install -y git zsh curl
+DEBIAN_FRONTEND=noninteractive apt install -y git zsh fzf
 
 print_status "Setting root shell to zsh..."
 usermod -s "$(command -v zsh)" root
