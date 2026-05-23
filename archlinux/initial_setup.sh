@@ -12,9 +12,10 @@ fi
 echo "This script will perform the following actions:"
 echo "1. Update system packages"
 echo "2. Install essential packages"
-echo "3. Create or update a user with sudo privileges"
-echo "4. Set up the user's SSH key"
-echo "5. Install dotfiles and set up zsh"
+echo "3. Enable chrony time synchronization"
+echo "4. Create or update a user with sudo privileges"
+echo "5. Set up the user's SSH key"
+echo "6. Install dotfiles and set up zsh"
 
 # Accept command line arguments or prompt
 USERNAME="${1:-}"
@@ -61,11 +62,16 @@ echo "Updating system packages..."
 pacman -Syu --noconfirm
 
 echo "Installing essential packages..."
-pacman -S --noconfirm sudo neovim curl python python-pip git zsh openssh which base-devel nodejs npm
+pacman -S --noconfirm sudo neovim curl python python-pip git zsh openssh chrony which base-devel nodejs npm
 
 echo "Enabling SSH service..."
 systemctl enable sshd
 systemctl start sshd
+
+echo "Enabling chrony time synchronization..."
+systemctl enable chronyd
+systemctl restart chronyd
+chronyc -a makestep || echo "Warning: chrony is enabled, but immediate time correction could not be confirmed yet."
 
 echo "Setting up the user..."
 if id "$USERNAME" &>/dev/null; then
@@ -137,4 +143,3 @@ chown "$USERNAME:$USERNAME" "$LOCALRC"
 chmod 644 "$LOCALRC"
 
 echo "Setup complete. Please reboot."
-

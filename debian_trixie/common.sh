@@ -97,6 +97,24 @@ configure_ssh_root_key_only() {
     fi
 }
 
+configure_time_sync() {
+    print_status "Configuring chrony time synchronization..."
+
+    if ! command -v chronyc &> /dev/null; then
+        print_error "chrony is not installed. Install the chrony package before configuring time sync."
+        exit 1
+    fi
+
+    systemctl enable chrony
+    systemctl restart chrony
+
+    if chronyc -a makestep &> /dev/null; then
+        print_status "chrony is enabled and an immediate time correction was requested."
+    else
+        print_warning "chrony is enabled, but immediate time correction could not be confirmed yet."
+    fi
+}
+
 detect_arch() {
     local machine
     machine=$(uname -m)

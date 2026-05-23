@@ -74,6 +74,7 @@ install_packages() {
     apt update
     DEBIAN_FRONTEND=noninteractive apt install -y \
         openssh-server \
+        chrony \
         nftables \
         fail2ban \
         unattended-upgrades \
@@ -268,6 +269,7 @@ print_summary() {
     print_status "Server hardening complete."
     print_info "SSH: root key login allowed; password and keyboard-interactive authentication disabled."
     print_info "Firewall: nftables default-deny inbound, SSH preserved, optional ports from OPEN_TCP_PORTS/OPEN_UDP_PORTS."
+    print_info "Time sync: chrony enabled with an immediate correction request."
     print_info "Fail2ban: sshd jail enabled with 5 retries in 10 minutes and 1 hour bans."
     print_info "Unattended upgrades: enabled with automatic reboot disabled."
     print_info "AppArmor: installed and enabled when supported by the kernel."
@@ -281,6 +283,7 @@ print_summary() {
 install_packages
 ensure_root_authorized_keys
 configure_ssh_root_key_only
+configure_time_sync
 configure_sysctl
 configure_journald
 configure_nftables

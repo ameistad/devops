@@ -12,13 +12,13 @@ apt update && apt install -y curl
 ## Scripts
 
 ### Bootstrap
-Installs shared prerequisites used by the setup scripts: certificates, gzip, tar, git, zsh, and OpenSSH server.
+Installs shared prerequisites used by the setup scripts: certificates, chrony time synchronization, gzip, tar, git, zsh, and OpenSSH server.
 ```sh
 curl -fsSL https://sh.ameistad.com/debian_trixie/bootstrap.sh | bash
 ```
 
 ### Server hardening
-Applies a conservative root-only hardening baseline: root SSH key login is allowed, password SSH login is disabled, nftables uses default-deny inbound firewalling, Fail2ban protects sshd, unattended upgrades run without automatic reboots, AppArmor tooling is enabled, journald logs are persistent, and low-risk sysctl settings are applied.
+Applies a conservative root-only hardening baseline: root SSH key login is allowed, password SSH login is disabled, chrony time synchronization is enabled, nftables uses default-deny inbound firewalling, Fail2ban protects sshd, unattended upgrades run without automatic reboots, AppArmor tooling is enabled, journald logs are persistent, and low-risk sysctl settings are applied.
 ```sh
 curl -fsSL https://sh.ameistad.com/debian_trixie/hardening.sh | bash
 ```

@@ -18,10 +18,13 @@ print_status "Installing shared setup prerequisites..."
 apt update
 DEBIAN_FRONTEND=noninteractive apt install -y \
     ca-certificates \
+    chrony \
     gzip \
     tar \
     git \
     zsh \
     openssh-server
+
+configure_time_sync
 
 print_status "Bootstrap complete."
