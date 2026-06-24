@@ -52,6 +52,7 @@ esac
 
 # Set variables
 INSTALL_DIR="/usr/local"
+MANAGED_NVIM_BIN="/usr/local/bin/nvim"
 TEMP_DIR=$(mktemp -d)
 FILENAME="nvim-linux-${NVIM_ARCH}.tar.gz"
 DOWNLOAD_URL="https://github.com/neovim/neovim/releases/download/${NEOVIM_VERSION}/${FILENAME}"
@@ -97,7 +98,7 @@ if ! gzip -t "$FILENAME"; then
 fi
 
 print_status "Extracting Neovim..."
-if ! tar xzf "$FILENAME"; then
+if ! tar --no-same-owner -xzf "$FILENAME"; then
     print_error "Failed to extract archive"
     exit 1
 fi
@@ -128,10 +129,12 @@ done
 
 print_status "Installing Neovim to $INSTALL_DIR..."
 mv "$EXTRACTED_DIR" "$INSTALL_DIR/"
+chown -R root:root "$INSTALL_DIR/$EXTRACTED_DIR"
 
 print_status "Creating symlink in /usr/local/bin..."
 mkdir -p /usr/local/bin
-ln -sf "$INSTALL_DIR/$EXTRACTED_DIR/bin/nvim" /usr/local/bin/nvim
+ln -sf "$INSTALL_DIR/$EXTRACTED_DIR/bin/nvim" "$MANAGED_NVIM_BIN"
+hash -r 2>/dev/null || true
 
 if [[ -d "$INSTALL_DIR/$EXTRACTED_DIR/share/man" ]]; then
     print_status "Setting up man pages..."
@@ -145,13 +148,25 @@ if [[ -d "$INSTALL_DIR/$EXTRACTED_DIR/share/man" ]]; then
 fi
 
 print_status "Verifying installation..."
-if command -v nvim &> /dev/null; then
-    NVIM_VERSION_OUTPUT=$(nvim --version | head -n1)
+if [[ -x "$MANAGED_NVIM_BIN" ]]; then
+    NVIM_VERSION_OUTPUT=$("$MANAGED_NVIM_BIN" --version | head -n1)
     print_status "Neovim installed successfully!"
-    print_status "Installed version: $NVIM_VERSION_OUTPUT"
-    print_status "Binary location: $(which nvim)"
+    print_status "Managed version: $NVIM_VERSION_OUTPUT"
+    print_status "Managed binary: $MANAGED_NVIM_BIN"
+
+    PATH_NVIM="$(command -v nvim || true)"
+    if [[ "$PATH_NVIM" == "$MANAGED_NVIM_BIN" ]]; then
+        print_status "PATH resolves nvim to the managed binary."
+    elif [[ -n "$PATH_NVIM" ]]; then
+        print_warning "PATH resolves nvim to $PATH_NVIM instead of $MANAGED_NVIM_BIN"
+        print_warning "That usually means an older Neovim package is shadowing this install."
+        print_warning "Move /usr/local/bin before $(dirname "$PATH_NVIM") in PATH, remove the old package, or run $MANAGED_NVIM_BIN directly."
+    else
+        print_warning "$MANAGED_NVIM_BIN is installed, but nvim is not currently on PATH."
+        print_warning "Add /usr/local/bin to PATH or run $MANAGED_NVIM_BIN directly."
+    fi
 else
-    print_error "Installation failed - nvim command not found"
+    print_error "Installation failed - managed nvim binary not found at $MANAGED_NVIM_BIN"
     print_error "PATH: $PATH"
     exit 1
 fi
