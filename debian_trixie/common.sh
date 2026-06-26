@@ -46,6 +46,12 @@ ensure_root_authorized_keys() {
 
 configure_ssh_root_key_only() {
     local ssh_config="${1:-/etc/ssh/sshd_config}"
+    local ssh_dropin="/etc/ssh/sshd_config.d/00-server-hardening.conf"
+    local effective_config
+    local permit_root_login
+    local password_authentication
+    local kbd_interactive_authentication
+    local pubkey_authentication
 
     if [[ ! -f "${ssh_config}.backup" ]]; then
         print_status "Creating backup of SSH config at ${ssh_config}.backup"
@@ -54,33 +60,52 @@ configure_ssh_root_key_only() {
 
     print_status "Configuring SSH to allow root key login and disable password authentication..."
 
-    update_ssh_config() {
-        local setting="$1"
-        local value="$2"
-
-        if grep -q "^#\?${setting}" "$ssh_config"; then
-            sed -i "s/^#\?${setting}.*/${setting} ${value}/" "$ssh_config"
-            print_status "Updated: ${setting} ${value}"
-        else
-            echo "${setting} ${value}" >> "$ssh_config"
-            print_status "Added: ${setting} ${value}"
-        fi
-    }
-
-    update_ssh_config "PermitRootLogin" "prohibit-password"
-    update_ssh_config "PasswordAuthentication" "no"
-    update_ssh_config "KbdInteractiveAuthentication" "no"
-    update_ssh_config "ChallengeResponseAuthentication" "no"
-    update_ssh_config "UseDNS" "no"
+    mkdir -p "$(dirname "$ssh_dropin")"
+    cat > "$ssh_dropin" << 'EOF'
+PermitRootLogin prohibit-password
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+ChallengeResponseAuthentication no
+PubkeyAuthentication yes
+UseDNS no
+EOF
+    print_status "Wrote SSH hardening drop-in: $ssh_dropin"
 
     print_status "Validating SSH configuration..."
     if sshd -t; then
         print_status "SSH configuration is valid"
     else
-        print_error "SSH configuration is invalid! Restoring backup..."
-        cp "${ssh_config}.backup" "$ssh_config"
+        print_error "SSH configuration is invalid!"
         exit 1
     fi
+
+    effective_config="$(sshd -T -C user=root,host=localhost,addr=127.0.0.1)"
+    permit_root_login="$(awk '$1 == "permitrootlogin" { print $2; exit }' <<< "$effective_config")"
+    password_authentication="$(awk '$1 == "passwordauthentication" { print $2; exit }' <<< "$effective_config")"
+    kbd_interactive_authentication="$(awk '$1 == "kbdinteractiveauthentication" { print $2; exit }' <<< "$effective_config")"
+    pubkey_authentication="$(awk '$1 == "pubkeyauthentication" { print $2; exit }' <<< "$effective_config")"
+
+    if [[ "$permit_root_login" != "prohibit-password" && "$permit_root_login" != "without-password" ]]; then
+        print_error "Effective SSH setting is not hardened: permitrootlogin $permit_root_login"
+        exit 1
+    fi
+
+    if [[ "$password_authentication" != "no" ]]; then
+        print_error "Effective SSH setting is not hardened: passwordauthentication $password_authentication"
+        exit 1
+    fi
+
+    if [[ "$kbd_interactive_authentication" != "no" ]]; then
+        print_error "Effective SSH setting is not hardened: kbdinteractiveauthentication $kbd_interactive_authentication"
+        exit 1
+    fi
+
+    if [[ "$pubkey_authentication" != "yes" ]]; then
+        print_error "Effective SSH setting is not hardened: pubkeyauthentication $pubkey_authentication"
+        exit 1
+    fi
+
+    print_status "Effective SSH configuration is hardened"
 
     print_status "Restarting SSH service..."
     if systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null; then

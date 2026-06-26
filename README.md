@@ -28,6 +28,11 @@ The hardening script requires `/root/.ssh/authorized_keys` to exist before it di
 curl -fsSL https://sh.ameistad.com/debian_trixie/hardening.sh | OPEN_TCP_PORTS="80,443" bash
 ```
 
+Verify the applied hardening state without changing server configuration:
+```sh
+curl -fsSL https://sh.ameistad.com/debian_trixie/verify_hardening.sh | bash
+```
+
 ### Root dotfiles
 Installs root shell/editor prerequisites including `fzf`, clones or updates dotfiles in `/root/dotfiles`, links `/root/.zshrc` and `/root/.config/nvim`, writes `/root/.localrc`, and sets root's shell to zsh.
 ```sh
