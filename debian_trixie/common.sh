@@ -30,6 +30,16 @@ require_root() {
         print_error "This script must be run as root"
         exit 1
     fi
+
+    # Non-login root shells (for example, plain `su`) may inherit a user PATH.
+    local admin_dir
+    for admin_dir in /usr/local/sbin /usr/sbin /sbin; do
+        case ":${PATH:-}:" in
+            *":$admin_dir:"*) ;;
+            *) PATH="${PATH:+$PATH:}$admin_dir" ;;
+        esac
+    done
+    export PATH
 }
 
 ensure_root_authorized_keys() {
