@@ -9,6 +9,11 @@ The scripts are fetched with `curl`, so install it first:
 apt update && apt install -y curl
 ```
 
+The scripts add missing administrative directories to `PATH` for non-login root shells. If an older published script fails with `sshd: command not found` or `usermod: command not found`, run this as root, then rerun the setup command:
+```sh
+export PATH="$PATH:/usr/local/sbin:/usr/sbin:/sbin"
+```
+
 ## Scripts
 
 ### Bootstrap
@@ -38,8 +43,6 @@ Installs root shell/editor prerequisites including `fzf`, clones or updates dotf
 ```sh
 curl -fsSL https://sh.ameistad.com/debian_trixie/dotfiles_setup.sh | bash
 ```
-
-The scripts add missing administrative directories to `PATH` for non-login root shells. If an older published script fails with `usermod: command not found`, run `export PATH="$PATH:/usr/local/sbin:/usr/sbin:/sbin"` as root, then rerun the setup command.
 
 ### SSH policy only
 Applies the same root key-only SSH policy without the rest of the hardening baseline.

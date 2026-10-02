@@ -63,6 +63,11 @@ configure_ssh_root_key_only() {
     local kbd_interactive_authentication
     local pubkey_authentication
 
+    if ! command -v sshd &> /dev/null; then
+        print_error "Cannot find sshd. Ensure openssh-server is installed and /usr/sbin is in PATH."
+        exit 1
+    fi
+
     if [[ ! -f "${ssh_config}.backup" ]]; then
         print_status "Creating backup of SSH config at ${ssh_config}.backup"
         cp "$ssh_config" "${ssh_config}.backup"
