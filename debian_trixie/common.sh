@@ -54,9 +54,11 @@ ensure_root_authorized_keys() {
     chmod 600 /root/.ssh/authorized_keys
 }
 
-configure_ssh_root_key_only() {
+configure_ssh_root_key_only() (
     local ssh_config="${1:-/etc/ssh/sshd_config}"
-    local ssh_dropin="/etc/ssh/sshd_config.d/00-server-hardening.conf"
+    local ssh_dropin="${2:-/etc/ssh/sshd_config.d/00-server-hardening.conf}"
+    local rollback_dir
+    local include_line="Include $ssh_dropin"
     local effective_config
     local permit_root_login
     local password_authentication
@@ -67,6 +69,34 @@ configure_ssh_root_key_only() {
         print_error "Cannot find sshd. Ensure openssh-server is installed and /usr/sbin is in PATH."
         exit 1
     fi
+
+    if [[ ! -f "$ssh_config" ]]; then
+        if [[ -f /usr/share/openssh/sshd_config ]]; then
+            print_status "Restoring missing SSH configuration from the packaged default..."
+            install -D -m 644 /usr/share/openssh/sshd_config "$ssh_config"
+        else
+            print_error "$ssh_config and the packaged OpenSSH default are missing."
+            exit 1
+        fi
+    fi
+
+    rollback_dir="$(mktemp -d)"
+    cp -p "$ssh_config" "$rollback_dir/sshd_config"
+    if [[ -e "$ssh_dropin" ]]; then
+        cp -p "$ssh_dropin" "$rollback_dir/dropin"
+    fi
+    trap 'status=$?
+        if (( status != 0 )); then
+            cp -p "$rollback_dir/sshd_config" "$ssh_config"
+            if [[ -f "$rollback_dir/dropin" ]]; then
+                cp -p "$rollback_dir/dropin" "$ssh_dropin"
+            else
+                rm -f "$ssh_dropin"
+            fi
+            print_error "SSH hardening failed; previous configuration restored."
+        fi
+        rm -rf "$rollback_dir"
+    ' EXIT
 
     if [[ ! -f "${ssh_config}.backup" ]]; then
         print_status "Creating backup of SSH config at ${ssh_config}.backup"
@@ -86,15 +116,25 @@ UseDNS no
 EOF
     print_status "Wrote SSH hardening drop-in: $ssh_dropin"
 
+    # sshd uses the first global value. Older configs may omit Include or put
+    # explicit values before it, so place our managed Include first, once.
+    {
+        printf '%s\n' "$include_line"
+        awk -v managed="$include_line" '$0 != managed' "$rollback_dir/sshd_config"
+    } > "$ssh_config"
+
+    # Fresh/minimal installations may lack host keys and the runtime directory.
+    ssh-keygen -A
+    mkdir -p /run/sshd
     print_status "Validating SSH configuration..."
-    if sshd -t; then
+    if sshd -t -f "$ssh_config"; then
         print_status "SSH configuration is valid"
     else
         print_error "SSH configuration is invalid!"
         exit 1
     fi
 
-    effective_config="$(sshd -T -C user=root,host=localhost,addr=127.0.0.1)"
+    effective_config="$(sshd -T -f "$ssh_config" -C user=root,host=localhost,addr=127.0.0.1)"
     permit_root_login="$(awk '$1 == "permitrootlogin" { print $2; exit }' <<< "$effective_config")"
     password_authentication="$(awk '$1 == "passwordauthentication" { print $2; exit }' <<< "$effective_config")"
     kbd_interactive_authentication="$(awk '$1 == "kbdinteractiveauthentication" { print $2; exit }' <<< "$effective_config")"
@@ -122,9 +162,11 @@ EOF
 
     print_status "Effective SSH configuration is hardened"
 
-    print_status "Restarting SSH service..."
-    if systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null; then
-        print_status "SSH service restarted successfully"
+    print_status "Enabling and reloading SSH service..."
+    systemctl unmask ssh
+    systemctl enable ssh
+    if systemctl reload-or-restart ssh; then
+        print_status "SSH service reloaded successfully"
     else
         print_error "Failed to restart SSH service"
         exit 1
@@ -135,7 +177,7 @@ EOF
     else
         print_warning "SSH service may not be running properly"
     fi
-}
+)
 
 configure_time_sync() {
     print_status "Configuring chrony time synchronization..."
@@ -145,6 +187,7 @@ configure_time_sync() {
         exit 1
     fi
 
+    systemctl unmask chrony
     systemctl enable chrony
     systemctl restart chrony
 

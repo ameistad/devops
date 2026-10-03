@@ -8,19 +8,24 @@ set -euo pipefail
 
 SCRIPT_DIR="$(dirname "${BASH_SOURCE[0]:-}")"
 if [[ -f "$SCRIPT_DIR/common.sh" ]]; then
+    # shellcheck source=debian_trixie/common.sh
     source "$SCRIPT_DIR/common.sh"
 else
-    eval "$(curl -fsSL https://sh.ameistad.com/debian_trixie/common.sh)"
+    COMMON_SCRIPT="$(curl -fsSL https://sh.ameistad.com/debian_trixie/common.sh)"
+    eval "$COMMON_SCRIPT"
 fi
-
-require_root
 
 OPEN_TCP_PORTS="${OPEN_TCP_PORTS:-}"
 OPEN_UDP_PORTS="${OPEN_UDP_PORTS:-}"
 SSH_PORTS="${SSH_PORTS:-}"
 NFT_TABLE_NAME="server_hardening"
+AUTO_DETECT_PORTS="${AUTO_DETECT_PORTS:-1}"
+DETECTED_TCP_PORTS=""
+DETECTED_UDP_PORTS=""
 
-normalize_port_list() {
+normalize_port_list() (
+    # Split separators without interpreting user input as filename patterns.
+    set -f
     local raw="${1:-}"
     local cleaned
     local port
@@ -31,10 +36,12 @@ normalize_port_list() {
     cleaned="${cleaned//;/ }"
 
     for port in $cleaned; do
-        if [[ ! "$port" =~ ^[0-9]+$ ]] || (( port < 1 || port > 65535 )); then
+        if [[ ! "$port" =~ ^[0-9]{1,5}$ ]] || (( 10#$port < 1 || 10#$port > 65535 )); then
             print_error "Invalid port: $port"
             exit 1
         fi
+
+        port=$((10#$port))
 
         if [[ "$seen" == *" $port "* ]]; then
             continue
@@ -48,31 +55,101 @@ normalize_port_list() {
     done
 
     echo "$result"
-}
+)
 
 detect_ssh_ports() {
     local ports=""
 
-    if [[ -n "$SSH_PORTS" ]]; then
-        echo "$SSH_PORTS"
-        return
-    fi
-
     if command -v sshd &> /dev/null; then
-        ports="$(sshd -T 2>/dev/null | awk '$1 == "port" { print $2 }' | tr '\n' ' ')"
+        ports="$(sshd -T 2>/dev/null | awk '$1 == "port" { print $2 }' | tr '\n' ' ' || true)"
     fi
 
     if [[ -z "$ports" && -f /etc/ssh/sshd_config ]]; then
         ports="$(awk 'tolower($1) == "port" { print $2 }' /etc/ssh/sshd_config | tr '\n' ' ')"
     fi
 
-    echo "${ports:-22}"
+    # Keep the actual port of this SSH session, including socket activation.
+    local session_port
+    read -r _ _ _ session_port <<< "${SSH_CONNECTION:-}"
+    echo "${SSH_PORTS:-${ports:-22}} ${session_port:-}"
 }
 
-install_packages() {
+preflight() {
+    if [[ ! -r /etc/os-release ]]; then
+        print_error "Cannot identify the operating system. Debian 13 is required."
+        exit 1
+    fi
+    # shellcheck disable=SC1091
+    source /etc/os-release
+    if [[ "${ID:-}" != debian || "${VERSION_ID:-}" != 13 ]]; then
+        print_error "This script supports Debian 13 (Trixie), not ${PRETTY_NAME:-this OS}."
+        exit 1
+    fi
+    if [[ ! -d /run/systemd/system ]] || ! command -v apt-get &>/dev/null; then
+        print_error "A running systemd Debian host with apt-get is required."
+        exit 1
+    fi
+    if [[ "$AUTO_DETECT_PORTS" != 0 && "$AUTO_DETECT_PORTS" != 1 ]]; then
+        print_error "AUTO_DETECT_PORTS must be 0 or 1."
+        exit 1
+    fi
+    # Reject bad input before installing packages or changing authentication.
+    normalize_port_list "$OPEN_TCP_PORTS $OPEN_UDP_PORTS $SSH_PORTS" >/dev/null
+    ensure_root_authorized_keys
+}
+
+detect_listening_ports() {
+    local protocol="$1"
+    local sockets
+    # One protocol at a time keeps the local address in column four.
+    if ! sockets="$(ss -H -l -n "-$protocol")"; then
+        print_error "Cannot inspect listening sockets; refusing to apply an incomplete firewall."
+        return 1
+    fi
+    awk '
+        {
+            endpoint = $4
+            port = endpoint
+            sub(/^.*:/, "", port)
+            address = endpoint
+            sub(/:[^:]*$/, "", address)
+            gsub(/\[|\]/, "", address)
+            sub(/%.*/, "", address)
+            if (address == "::1" || address ~ /^127\./ || address ~ /^::ffff:127\./)
+                next
+            if (port ~ /^[0-9]+$/) print port
+        }
+    ' <<< "$sockets"
+}
+
+snapshot_listening_ports() {
+    if [[ "$AUTO_DETECT_PORTS" == 1 ]]; then
+        DETECTED_TCP_PORTS="$(detect_listening_ports t)"
+        DETECTED_UDP_PORTS="$(detect_listening_ports u)"
+        print_info "Detected TCP listeners: $(normalize_port_list "$DETECTED_TCP_PORTS")"
+        print_info "Detected UDP listeners: $(normalize_port_list "$DETECTED_UDP_PORTS")"
+        print_warning "Detected ports are allowed on all interfaces. Review the list; listeners may previously have been firewalled."
+    fi
+}
+
+install_packages() (
+    # Debian package hooks can try-restart nftables even on a reinstall, which
+    # runs ExecStop and flushes Docker/other live tables. A runtime mask blocks
+    # those hooks without stopping an active firewall. Preserve an existing mask.
+    if [[ "$(readlink /run/systemd/system/nftables.service 2>/dev/null || true)" != /dev/null ]]; then
+        systemctl mask --runtime nftables.service
+        trap 'systemctl unmask --runtime nftables.service' EXIT
+    fi
+
     print_status "Installing hardening packages..."
-    apt update
-    DEBIAN_FRONTEND=noninteractive apt install -y \
+    apt-get update
+    # Restore deleted package conffiles as well as installing/updating dependencies.
+    DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=--force-confmiss \
+        -o Dpkg::Options::=--force-confold install --reinstall -y \
+        ca-certificates \
+        iproute2 \
+        procps \
+        python3-systemd \
         openssh-server \
         chrony \
         nftables \
@@ -81,11 +158,12 @@ install_packages() {
         apparmor \
         apparmor-utils \
         apparmor-profiles
-}
+)
 
 write_nftables_config() {
     local tcp_ports="$1"
     local udp_ports="$2"
+    local config="$3"
 
     if [[ -f /etc/nftables.conf && ! -f /etc/nftables.conf.pre-hardening ]]; then
         print_status "Backing up /etc/nftables.conf to /etc/nftables.conf.pre-hardening"
@@ -93,7 +171,7 @@ write_nftables_config() {
     fi
 
     print_status "Writing nftables baseline firewall..."
-    cat > /etc/nftables.conf << EOF
+    cat > "$config" << EOF
 #!/usr/sbin/nft -f
 
 destroy table inet ${NFT_TABLE_NAME}
@@ -107,18 +185,18 @@ table inet ${NFT_TABLE_NAME} {
         ct state invalid drop
 
         ip protocol icmp accept
-        ip6 nexthdr icmpv6 accept
+        meta l4proto ipv6-icmp accept
 EOF
 
     if [[ -n "$tcp_ports" ]]; then
-        echo "        ct state new tcp dport { $tcp_ports } accept" >> /etc/nftables.conf
+        echo "        ct state new tcp dport { $tcp_ports } accept" >> "$config"
     fi
 
     if [[ -n "$udp_ports" ]]; then
-        echo "        ct state new udp dport { $udp_ports } accept" >> /etc/nftables.conf
+        echo "        ct state new udp dport { $udp_ports } accept" >> "$config"
     fi
 
-    cat >> /etc/nftables.conf << EOF
+    cat >> "$config" << EOF
 
         counter drop
     }
@@ -134,10 +212,11 @@ configure_nftables() {
     local ssh_ports
     local tcp_ports
     local udp_ports
+    local candidate
 
     ssh_ports="$(normalize_port_list "$(detect_ssh_ports)")"
-    tcp_ports="$(normalize_port_list "$ssh_ports $OPEN_TCP_PORTS")"
-    udp_ports="$(normalize_port_list "$OPEN_UDP_PORTS")"
+    tcp_ports="$(normalize_port_list "$ssh_ports $DETECTED_TCP_PORTS $OPEN_TCP_PORTS")"
+    udp_ports="$(normalize_port_list "$DETECTED_UDP_PORTS $OPEN_UDP_PORTS")"
 
     print_status "Configuring nftables firewall..."
     print_info "Allowed TCP ports: $tcp_ports"
@@ -145,13 +224,24 @@ configure_nftables() {
         print_info "Allowed UDP ports: $udp_ports"
     fi
 
-    write_nftables_config "$tcp_ports" "$udp_ports"
+    candidate="$(mktemp /etc/nftables.conf.XXXXXX)"
+    write_nftables_config "$tcp_ports" "$udp_ports" "$candidate"
 
-    print_status "Validating nftables configuration..."
-    nft -c -f /etc/nftables.conf
+    print_status "Validating and applying nftables configuration..."
+    if ! nft -c -f "$candidate" || ! nft -f "$candidate"; then
+        rm -f "$candidate"
+        print_error "Firewall update failed; the previous configuration file was retained."
+        return 1
+    fi
+    chmod 644 "$candidate"
+    mv "$candidate" /etc/nftables.conf
 
+    systemctl unmask nftables
     systemctl enable nftables
-    systemctl restart nftables
+    # Restart runs ExecStop, which flushes ALL tables (including Docker/Fail2ban).
+    # Starting an already-active service is a no-op; an inactive service loads
+    # the same idempotent, table-scoped configuration we just validated.
+    systemctl start nftables
 
     print_status "nftables firewall is enabled."
 }
@@ -175,6 +265,7 @@ ignoreip = 127.0.0.1/8 ::1
 EOF
 
     fail2ban-client -t
+    systemctl unmask fail2ban
     systemctl enable fail2ban
     systemctl restart fail2ban
 
@@ -197,6 +288,8 @@ Unattended-Upgrade::Remove-New-Unused-Dependencies "true";
 Unattended-Upgrade::SyslogEnable "true";
 EOF
 
+    systemctl unmask unattended-upgrades apt-daily.timer apt-daily-upgrade.timer
+    systemctl enable --now apt-daily.timer apt-daily-upgrade.timer
     systemctl enable unattended-upgrades
     systemctl restart unattended-upgrades
 
@@ -205,6 +298,7 @@ EOF
 
 configure_apparmor() {
     print_status "Enabling AppArmor service..."
+    systemctl unmask apparmor
     systemctl enable apparmor
 
     if systemctl restart apparmor; then
@@ -268,7 +362,7 @@ EOF
 print_summary() {
     print_status "Server hardening complete."
     print_info "SSH: root key login allowed; password and keyboard-interactive authentication disabled."
-    print_info "Firewall: nftables default-deny inbound, SSH preserved, optional ports from OPEN_TCP_PORTS/OPEN_UDP_PORTS."
+    print_info "Firewall: default-deny inbound; SSH, detected listeners, and explicit OPEN_TCP_PORTS/OPEN_UDP_PORTS allowed."
     print_info "Time sync: chrony enabled with an immediate correction request."
     print_info "Fail2ban: sshd jail enabled with 5 retries in 10 minutes and 1 hour bans."
     print_info "Unattended upgrades: enabled with automatic reboot disabled."
@@ -280,14 +374,23 @@ print_summary() {
     fi
 }
 
-install_packages
-ensure_root_authorized_keys
-configure_ssh_root_key_only
-configure_time_sync
-configure_sysctl
-configure_journald
-configure_nftables
-configure_fail2ban
-configure_unattended_upgrades
-configure_apparmor
-print_summary
+main() {
+    require_root
+    preflight
+    install_packages
+    snapshot_listening_ports
+    configure_ssh_root_key_only /etc/ssh/sshd_config
+    configure_time_sync
+    configure_sysctl
+    configure_journald
+    configure_nftables
+    configure_fail2ban
+    configure_unattended_upgrades
+    configure_apparmor
+    print_summary
+}
+
+# Also supports curl | bash; sourcing exposes helpers for regression tests.
+if [[ "${BASH_SOURCE[0]:-}" == "$0" || -z "${BASH_SOURCE[0]:-}" ]]; then
+    main "$@"
+fi

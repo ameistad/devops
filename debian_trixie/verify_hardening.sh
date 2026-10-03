@@ -7,9 +7,11 @@ set -uo pipefail
 
 SCRIPT_DIR="$(dirname "${BASH_SOURCE[0]:-}")"
 if [[ -f "$SCRIPT_DIR/common.sh" ]]; then
+    # shellcheck source=debian_trixie/common.sh
     source "$SCRIPT_DIR/common.sh"
 else
-    eval "$(curl -fsSL https://sh.ameistad.com/debian_trixie/common.sh)"
+    COMMON_SCRIPT="$(curl -fsSL https://sh.ameistad.com/debian_trixie/common.sh)" || exit 1
+    eval "$COMMON_SCRIPT"
 fi
 
 require_root
@@ -323,6 +325,10 @@ check_fail2ban() {
 check_unattended_upgrades() {
     print_info "Checking unattended upgrades..."
     check_service_enabled unattended-upgrades
+    check_service_enabled apt-daily.timer
+    check_service_active apt-daily.timer
+    check_service_enabled apt-daily-upgrade.timer
+    check_service_active apt-daily-upgrade.timer
 
     check_file_contains "/etc/apt/apt.conf.d/20auto-upgrades" '^APT::Periodic::Update-Package-Lists "1";$' "APT periodic package list updates are enabled"
     check_file_contains "/etc/apt/apt.conf.d/20auto-upgrades" '^APT::Periodic::Unattended-Upgrade "1";$' "APT unattended upgrades are enabled"
@@ -351,7 +357,7 @@ check_packages() {
     local package
 
     print_info "Checking required packages..."
-    for package in openssh-server chrony nftables fail2ban unattended-upgrades apparmor apparmor-utils apparmor-profiles; do
+    for package in ca-certificates iproute2 procps python3-systemd openssh-server chrony nftables fail2ban unattended-upgrades apparmor apparmor-utils apparmor-profiles; do
         if dpkg-query -W -f='${Status}' "$package" 2>/dev/null | grep -q 'install ok installed'; then
             pass "$package is installed"
         else
